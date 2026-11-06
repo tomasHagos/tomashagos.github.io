@@ -459,6 +459,7 @@ function goTo(id){
   R.at = null;
   setActive(id);
   showToast(`Riding to ${s.nav}…`);
+  updateTourBtn();
 }
 
 function arrive(s){
@@ -469,6 +470,7 @@ function arrive(s){
   Object.entries(pinEls).forEach(([id, p]) => p.g.classList.toggle('here', id === s.id));
   if (visited.has(s.id)) pinEls[s.id].t.textContent = '✓';
   setActive(s.id);
+  updateTourBtn();
   try { if (location.hash !== '#' + s.id) history.replaceState(null, '', '#' + s.id); } catch (e) {}
   openPanel(s);
 }
@@ -632,10 +634,20 @@ document.addEventListener('keydown', e => {
   }
 });
 document.getElementById('overviewBtn').onclick = () => { closePanel(); cam.mode = 'overview'; cam.manual = { x: 0, y: 0 }; cam.zoomMul = 1; };
-document.getElementById('tourBtn').onclick = () => {
-  const idx = STOPS.findIndex(s => s.id === R.at);
-  goTo(idx < 0 || R.at === 'about' && !visited.has('about') ? 'about' : STOPS[(idx + 1) % STOPS.length].id);
-};
+/* Top-right tour button: "Start the ride" before the first ride,
+   then "Next: <stop>" pointing at the stop after the current/target one. */
+const tourBtn = document.getElementById('tourBtn');
+const rideStarted = () => !!ride || visited.size > 0;
+function tourNextId(){
+  if (!rideStarted()) return 'about';
+  const cur = ride ? ride.target.id : R.at;
+  const idx = STOPS.findIndex(s => s.id === cur);
+  return STOPS[(idx + 1) % STOPS.length].id;
+}
+function updateTourBtn(){
+  tourBtn.textContent = rideStarted() ? `Next: ${S[tourNextId()].nav} →` : 'Start the ride →';
+}
+tourBtn.onclick = () => goTo(tourNextId());
 
 function fromHash(){ const id = location.hash.slice(1); if (S[id] && id !== R.at) goTo(id); }
 addEventListener('hashchange', fromHash);
