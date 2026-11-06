@@ -85,4 +85,24 @@ SKILLS: [
   { h:'Tools', strong:[], rest:['Git','Docker','Postman','Jira','Visual Studio','VS Code','IntelliJ','CLion','Phinx','Sphinx'] },
 ],
 EMAIL: 'tomashagos7@gmail.com',
+
+/*
+ * Weather + holidays (drawn by effects.js).
+ * Weather: live conditions for `weather.city` from Open-Meteo (free, no key).
+ *   If that can't be reached, a "weather of the day" is picked from the season
+ *   (same pick for every visitor that day).
+ * Holidays: active when today's date (MM-DD) is inside from–to. Ranges may
+ *   wrap past New Year. The first match wins.
+ * Preview any combo by adding to the URL, e.g. ?weather=snow&holiday=christmas
+ *   weather: clear | cloudy | rain | storm | snow | fog
+ *   holiday: christmas | halloween | canada | none
+ */
+EFFECTS: {
+  weather: { city: 'Winnipeg', lat: 49.8954, lon: -97.1385 },
+  holidays: [
+    { id: 'christmas', from: '11-01', to: '01-06', label: 'Happy holidays' },
+    { id: 'halloween', from: '10-15', to: '10-31', label: 'Happy Halloween' },
+    { id: 'canada',    from: '06-28', to: '07-02', label: 'Happy Canada Day' },
+  ],
+},
 };

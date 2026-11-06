@@ -53,9 +53,9 @@ const L = name => el('g', { id: name }, world);
 const gGround = L('ground'), gRiver = L('river'), gBlocks = L('blocks'), gRoads = L('roads'), gDeco = L('deco'),
       gLand = L('landmarks'), gRoute = L('routeLayer'), gTrail = L('trail'), gPins = L('pins'), gRider = L('rider'), gClouds = L('clouds');
 
-el('rect', { x: -2000, y: -2000, width: W + 4000, height: H + 4000, fill: '#6f9f52' }, gGround);
-el('rect', { x: -2000, y: -2000, width: W + 4000, height: H + 4000, fill: 'url(#grassTex)', opacity: .55 }, gGround);
-el('rect', { x: 40, y: 40, width: W - 80, height: H - 80, rx: 60, fill: 'url(#grassTex)' }, gGround);
+el('rect', { x: -2000, y: -2000, width: W + 4000, height: H + 4000, fill: '#6f9f52', class: 'g-out' }, gGround);
+el('rect', { x: -2000, y: -2000, width: W + 4000, height: H + 4000, fill: 'url(#grassTex)', opacity: .55, class: 'g-tex' }, gGround);
+el('rect', { x: 40, y: 40, width: W - 80, height: H - 80, rx: 60, fill: 'url(#grassTex)', class: 'g-tex' }, gGround);
 
 const riverX = y => 1450 + 70 * Math.sin(y / 260 + 0.6) + 25 * Math.sin(y / 97);
 const riverW = y => 46 + 8 * Math.sin(y / 170);
@@ -64,12 +64,12 @@ function riverPoly(extra){
   for (let y = -300; y <= H + 300; y += 16){ left.push(`${riverX(y) - riverW(y) - extra},${y}`); right.unshift(`${riverX(y) + riverW(y) + extra},${y}`); }
   return left.concat(right).join(' ');
 }
-el('polygon', { points: riverPoly(14), fill: '#d9c99a' }, gRiver);
-el('polygon', { points: riverPoly(0), fill: '#5b9cc2' }, gRiver);
-el('polygon', { points: riverPoly(-18), fill: '#6aa9cd' }, gRiver);
+el('polygon', { points: riverPoly(14), fill: '#d9c99a', class: 'river-bank' }, gRiver);
+el('polygon', { points: riverPoly(0), fill: '#5b9cc2', class: 'river-water' }, gRiver);
+el('polygon', { points: riverPoly(-18), fill: '#6aa9cd', class: 'river-water' }, gRiver);
 for (let k = 0; k < 70; k++){
   const y = rand() * (H + 200) - 100, x = riverX(y) + (rand() - .5) * riverW(y) * 1.2;
-  el('line', { x1: x, y1: y, x2: x + 14 + rand() * 16, y2: y + 3, stroke: '#cfe6f2', 'stroke-width': 2, 'stroke-linecap': 'round', opacity: .55 }, gRiver);
+  el('line', { x1: x, y1: y, x2: x + 14 + rand() * 16, y2: y + 3, stroke: '#cfe6f2', 'stroke-width': 2, 'stroke-linecap': 'round', opacity: .55, class: 'ripple' }, gRiver);
 }
 
 /* obstacles (landmarks etc.) for house/tree placement */
@@ -82,12 +82,16 @@ function cornerRect(node, sx, sy, w, h, inset = 56){
 
 /* ---- trees & houses ---- */
 const greens = ['#4f8a3c','#5c9a45','#3f7a35','#6aa64e','#2f6b33'];
+const TREES = [], HOUSES = [], ROOFS = [];
 function tree(x, y, r, parent = gDeco){
   const g = el('g', {}, parent);
   el('circle', { cx: x + r * .35, cy: y + r * .35, r, fill: 'rgba(20,40,20,.22)' }, g);
   el('circle', { cx: x, cy: y, r, fill: pick(greens) }, g);
   el('circle', { cx: x - r * .28, cy: y - r * .3, r: r * .55, fill: '#ffffff', opacity: .12 }, g);
+  el('circle', { cx: x - r * .22, cy: y - r * .25, r: r * .62, fill: '#fbfdff', opacity: .88, class: 'snowcap' }, g);
+  TREES.push({ x, y, r, g });
 }
+function snowRoof(g, x, y, w, h, rx = 2){ el('rect', { x: x + 3, y: y + 3, width: w - 6, height: h - 6, rx, fill: '#fbfdff', opacity: .62, class: 'snowcap' }, g); }
 const roofs = ['#c8553d','#8d6e63','#577590','#9c6644','#6d597a','#b56576','#7a8b6f','#a3a380','#c08552'];
 function house(x, y, w, h, parent = gDeco){
   const g = el('g', {}, parent);
@@ -102,7 +106,9 @@ function house(x, y, w, h, parent = gDeco){
     el('rect', { x: x + w / 2, y, width: w / 2, height: h, fill: c, style: 'filter:brightness(.78)' }, g);
     el('line', { x1: x + w / 2, y1: y + 4, x2: x + w / 2, y2: y + h - 4, stroke: 'rgba(255,255,255,.35)', 'stroke-width': 2 }, g);
   }
+  snowRoof(g, x, y, w, h);
   if (rand() < .4) el('rect', { x: x + w * .7, y: y + h * .15, width: 8, height: 8, fill: '#5a4a42' }, g);
+  HOUSES.push({ x, y, w, h, g });
 }
 
 /* ---- landmarks ---- */
@@ -110,6 +116,7 @@ function shadowRect(g, r, rx = 4){ el('rect', { x: r.x + 10, y: r.y + 12, width:
 function flatRoof(g, r, fill, edge){
   shadowRect(g, r);
   el('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: 4, fill, class: 'lm-roof' }, g);
+  snowRoof(g, r.x, r.y, r.w, r.h, 3);
   el('rect', { x: r.x + 6, y: r.y + 6, width: r.w - 12, height: r.h - 12, rx: 2, fill: 'none', stroke: edge, 'stroke-width': 2.5 }, g);
 }
 function acUnits(g, r, n){
@@ -135,13 +142,14 @@ const LM = {};
   const s = S.about, r = cornerRect(s.n, -1, -1, 150, 116); LM.about = r; obstacles.push({ ...r, x: r.x - 30, w: r.w + 30, h: r.h + 30 });
   const g = stopGroup('about');
   // garden + driveway
-  el('rect', { x: r.x - 26, y: r.y - 26, width: r.w + 52, height: r.h + 52, rx: 10, fill: '#a7d07f' }, g);
+  el('rect', { x: r.x - 26, y: r.y - 26, width: r.w + 52, height: r.h + 52, rx: 10, fill: '#a7d07f', class: 'g-block' }, g);
   el('rect', { x: r.x + r.w - 40, y: r.y + r.h, width: 34, height: 30, fill: '#cfc8b8' }, g);
   ['#ffb4a2','#ffd166','#e5989b','#ffffff'].forEach((c, k) => { for (let q = 0; q < 4; q++) el('circle', { cx: r.x - 14 + q * 9, cy: r.y + 12 + k * 20, r: 3.5, fill: c }, g); });
   shadowRect(g, r, 2);
   el('rect', { x: r.x, y: r.y, width: r.w, height: r.h / 2, fill: '#e76f51', class: 'lm-roof' }, g);
   el('rect', { x: r.x, y: r.y + r.h / 2, width: r.w, height: r.h / 2, fill: '#c4553b', class: 'lm-roof' }, g);
   for (let k = 1; k < 7; k++) el('line', { x1: r.x + k * r.w / 7, y1: r.y, x2: r.x + k * r.w / 7, y2: r.y + r.h, stroke: 'rgba(0,0,0,.08)', 'stroke-width': 2 }, g);
+  snowRoof(g, r.x, r.y, r.w, r.h);
   el('line', { x1: r.x, y1: r.y + r.h / 2, x2: r.x + r.w, y2: r.y + r.h / 2, stroke: '#ffd6c9', 'stroke-width': 3 }, g);
   el('rect', { x: r.x + 26, y: r.y + 16, width: 16, height: 16, fill: '#6b4f43' }, g);
   plaque(g, 'Home', r.x + r.w / 2, r.y + r.h + 4, s.color);
@@ -152,7 +160,7 @@ const LM = {};
   const bx = XS[0] + CURB, by = YS[2] + CURB, bw = XS[1] - XS[0] - CURB * 2, bh = YS[3] - YS[2] - CURB * 2;
   obstacles.push({ x: bx, y: by, w: bw, h: bh });
   const base = el('g', {}, gLand);
-  el('rect', { x: bx, y: by, width: bw, height: bh, rx: 12, fill: '#a9d488' }, base);
+  el('rect', { x: bx, y: by, width: bw, height: bh, rx: 12, fill: '#a9d488', class: 'g-block' }, base);
   // quad paths
   const cx = bx + bw * .55, cy = by + bh * .62;
   [[bx + 10, by + bh - 10],[bx + bw - 10, by + 10],[bx + 10, by + 10],[bx + bw - 10, by + bh - 10]].forEach(([x, y]) =>
@@ -197,6 +205,7 @@ const LM = {};
   const u = { x: r.x + 32, y: r.y + 34, w: r.w - 64, h: r.h - 68 };
   el('rect', { x: u.x + 8, y: u.y + 9, width: u.w, height: u.h, rx: 3, fill: 'rgba(0,0,0,.25)' }, g);
   el('rect', { x: u.x, y: u.y, width: u.w, height: u.h, rx: 3, fill: '#d6d0e2', stroke: '#968daa', 'stroke-width': 2.5, class: 'lm-roof' }, g);
+  snowRoof(g, u.x, u.y, u.w, u.h);
   // elevator core + AC units on top
   el('rect', { x: u.x + u.w / 2 - 18, y: u.y + 14, width: 36, height: 28, fill: '#7d7591', stroke: '#5e5772', 'stroke-width': 2 }, g);
   [[16, 60], [u.w - 34, 60], [u.w / 2 - 9, 64]].forEach(([dx, dy]) =>
@@ -284,7 +293,7 @@ blockYs.forEach(([y0, y1], bj) => blockXs.forEach(([x0, x1], bi) => {
   const bx = x0 + CURB, by = y0 + CURB, bw = x1 - x0 - CURB * 2, bh = y1 - y0 - CURB * 2;
   if (bi === 0 && bj === 2) return; // campus
   const park = bi === 2;
-  el('rect', { x: bx, y: by, width: bw, height: bh, rx: 12, fill: park ? '#8fc46a' : '#a3cc80' }, gBlocks);
+  el('rect', { x: bx, y: by, width: bw, height: bh, rx: 12, fill: park ? '#8fc46a' : '#a3cc80', class: park ? 'g-park' : 'g-block' }, gBlocks);
   if (park){
     // riverside footpath
     let d = '';
@@ -317,8 +326,8 @@ for (let k = 0; k < 900; k++){
 
 /* ---- roads ---- */
 const x0 = XS[0], x1 = XS[XS.length - 1], y0 = YS[0], y1 = YS[YS.length - 1];
-YS.forEach(y => el('rect', { x: x0 - CURB, y: y - CURB, width: x1 - x0 + CURB * 2, height: CURB * 2, fill: '#d8d1c1' }, gRoads));
-XS.forEach(x => el('rect', { x: x - CURB, y: y0 - CURB, width: CURB * 2, height: y1 - y0 + CURB * 2, fill: '#d8d1c1' }, gRoads));
+YS.forEach(y => el('rect', { x: x0 - CURB, y: y - CURB, width: x1 - x0 + CURB * 2, height: CURB * 2, fill: '#d8d1c1', class: 'sidewalk' }, gRoads));
+XS.forEach(x => el('rect', { x: x - CURB, y: y0 - CURB, width: CURB * 2, height: y1 - y0 + CURB * 2, fill: '#d8d1c1', class: 'sidewalk' }, gRoads));
 // bridges
 YS.forEach(y => {
   const xr = riverX(y), half = riverW(y) + 26;
@@ -551,6 +560,7 @@ function frame(now){
   cam.scale += (tg.scale - cam.scale) * k;
   applyCam();
   clouds.forEach(c => { c.x += c.v * dt; if (c.x - c.rx > W + 200) c.x = -c.rx - 200; c.el.setAttribute('cx', c.x.toFixed(1)); });
+  frameHooks.forEach(fn => { try { fn(dt, now); } catch (e) { console.error(e); } });
   requestAnimationFrame(frame);
 }
 
@@ -652,6 +662,17 @@ tourBtn.onclick = () => goTo(tourNextId());
 function fromHash(){ const id = location.hash.slice(1); if (S[id] && id !== R.at) goTo(id); }
 addEventListener('hashchange', fromHash);
 addEventListener('resize', applyCam);
+
+/* Read-only handles for effects.js (weather + holiday decorations). */
+const frameHooks = [];
+window.PortfolioMap = {
+  NS, el, svg, world, W, H, XS, YS, riverX, riverW, rand,
+  layers: { ground: gGround, deco: gDeco, landmarks: gLand, route: gRoute, rider: gRider, clouds: gClouds },
+  trees: TREES, houses: HOUSES, landmarks: LM, stops: S,
+  riderBody: body,
+  onFrame: fn => frameHooks.push(fn),
+  reduceMotion,
+};
 
 cam.scale = overviewScale();
 applyCam();
