@@ -110,3 +110,30 @@ button{font:inherit;color:inherit}
 @media (prefers-reduced-motion: reduce){
   .pin,.route-line{animation:none}
 }
+
+/* ---------- weather + holidays (effects.js) ---------- */
+#wx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
+.wx-pill{display:flex;align-items:center;gap:10px;background:var(--paper);border:2px solid var(--ink);border-radius:999px;padding:7px 13px;font-size:13.5px;font-weight:600;box-shadow:3px 3px 0 var(--ink);white-space:nowrap}
+.wx-hol{color:#b3261e}
+.wx-hol + span{border-left:1.5px solid var(--line);padding-left:10px}
+@media (max-width: 820px){
+  .wx-pill{font-size:12px;padding:5px 10px;gap:6px}
+  .wx-hol b{display:none}
+  .wx-hol + span{padding-left:6px}
+}
+/* snow on the ground (svg.snowy is set by effects.js) */
+.snowcap{display:none}
+svg.snowy .snowcap{display:inline}
+svg.snowy .g-out{fill:#dbe4ec}
+svg.snowy .g-tex{fill:#edf2f6}
+svg.snowy .g-block{fill:#f6f9fb}
+svg.snowy .g-park{fill:#eff4f8}
+svg.snowy .sidewalk{fill:#e6eaee}
+svg.snowy .river-bank{fill:#e2e9ef}
+svg.snowy .river-water{fill:#b7d3e3}
+svg.snowy .ripple{display:none}
+/* twinkling holiday lights */
+.lt-a{animation:twinkle 1.4s ease-in-out infinite}
+.lt-b{animation:twinkle 1.4s ease-in-out -.7s infinite}
+@keyframes twinkle{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion: reduce){ .lt-a,.lt-b{animation:none} }
