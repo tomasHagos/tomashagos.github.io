@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tomas Hagos — Portfolio</title>
+<meta name="description" content="Tomas Hagos — Computer Science Honours Co-op student at the University of Manitoba. Ride around the map to see my experience.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<svg id="map" xmlns="http://www.w3.org/2000/svg" aria-label="Map of Tomas's portfolio. Use the route list to visit each stop.">
+  <defs>
+    <pattern id="grassTex" width="40" height="40" patternUnits="userSpaceOnUse">
+      <rect width="40" height="40" fill="#93bf6c"/>
+      <circle cx="6" cy="8" r="1.6" fill="#86b25f"/><circle cx="26" cy="18" r="1.4" fill="#a2cb7b"/>
+      <circle cx="14" cy="31" r="1.5" fill="#86b25f"/><circle cx="34" cy="36" r="1.2" fill="#a2cb7b"/>
+    </pattern>
+    <radialGradient id="cloud" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#0d2a1a" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#0d2a1a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g id="world"></g>
+</svg>
+
+<header class="brand">
+  <h1>Tomas Hagos</h1>
+  <p>Software developer · CS Honours Co-op at the University of Manitoba</p>
+  <div class="links">
+    <a href="https://github.com/tomasHagos" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://www.linkedin.com/in/tomaskhagos" target="_blank" rel="noopener">LinkedIn</a>
+    <a href="mailto:tomashagos7@gmail.com">Email</a>
+  </div>
+</header>
+
+<nav class="route" id="route" aria-label="Stops"></nav>
+
+<div class="controls">
+  <button class="btn" id="overviewBtn" type="button">Overview</button>
+  <button class="btn primary" id="tourBtn" type="button">Start the ride →</button>
+</div>
+
+<div class="intro" id="intro">
+  <h3>Welcome to my neighbourhood.</h3>
+  <p>Every building on this map is part of my story. Pick a stop and I'll bike over and show you what I did there.</p>
+  <div class="row">
+    <button class="btn primary" type="button" data-go="birchwood">Ride to my latest job →</button>
+    <button class="btn" type="button" data-go="about">About me</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span class="spin"></span><span id="toastText">Riding…</span></div>
+
+<aside class="panel" id="panel" aria-live="polite">
+  <div class="band"></div>
+  <button class="close" id="closeBtn" type="button" aria-label="Close">×</button>
+  <div class="scroll" id="panelBody"></div>
+  <div class="foot">
+    <button class="btn" id="prevBtn" type="button">← Back</button>
+    <button class="btn primary" id="nextBtn" type="button">Next stop →</button>
+  </div>
+</aside>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
