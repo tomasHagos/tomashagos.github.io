@@ -137,3 +137,9 @@ svg.snowy .ripple{display:none}
 .lt-b{animation:twinkle 1.4s ease-in-out -.7s infinite}
 @keyframes twinkle{0%,100%{opacity:1}50%{opacity:.25}}
 @media (prefers-reduced-motion: reduce){ .lt-a,.lt-b{animation:none} }
+
+/* hobbies stop */
+.card.hobby{display:flex;gap:14px;align-items:flex-start}
+.hobby-ic{font-size:26px;line-height:1;flex:none;width:34px;text-align:center;margin-top:1px}
+.card.hobby p{margin:4px 0 0;font-size:14.5px;line-height:1.5;color:var(--ink-2)}
+.card.hobby .tags{margin:8px 0 0}
