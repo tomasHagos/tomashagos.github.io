@@ -62,6 +62,8 @@ STOPS: [
     title:'Projects', kind:'projects' },
   { id:'skills', node:[3,3], dir:[1,-1], color:'#2bb38a', nav:'Skills', sub:'Toolbox', group:'More', kicker:'Market',
     title:'Technical skills', kind:'skills' },
+  { id:'hobbies', node:[2,1], dir:[1,1], color:'#d62839', nav:'Hobbies', sub:'Off the clock', group:'More', kicker:'Clubhouse',
+    title:'Off the clock', kind:'hobbies' },
   { id:'contact', node:[4,0], dir:[-1,1], color:'#3d5a80', nav:'Contact', sub:'Say hello', group:'More', kicker:'Post office',
     title:"Let's talk", kind:'contact' },
 ],
@@ -83,6 +85,13 @@ SKILLS: [
   { h:'Frameworks', strong:['Angular','.NET','Ruby on Rails','Laravel'], rest:[] },
   { h:'Databases', strong:['MongoDB','MySQL','SQLite'], rest:[] },
   { h:'Tools', strong:[], rest:['Git','Docker','Postman','Jira','Visual Studio','VS Code','IntelliJ','CLion','Phinx','Sphinx'] },
+],
+// Hobbies stop. `gamertag` (optional) shows under the FIFA card when filled in.
+HOBBIES: [
+  { icon:'⚽', title:'Football (soccer)', text:"Playing it, watching it, talking about it. If there's a ball, I'm in." },
+  { icon:'🔴', title:'Arsenal FC', text:"Huge Arsenal fan. Gooner through and through. On match days my phone goes on Do Not Disturb." },
+  { icon:'🎬', title:'Movies', text:"Big movie watcher. Always taking recommendations, so send me your favourite." },
+  { icon:'🎮', title:'FIFA', text:"Yes, it's called EA FC now. No, I'm not calling it that. Think you can beat me? Add me and let's run it up.", gamertag:'' },
 ],
 EMAIL: 'tomashagos7@gmail.com',
 

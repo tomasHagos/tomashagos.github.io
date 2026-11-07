@@ -18,6 +18,7 @@ const pick = a => a[Math.floor(rand() * a.length)];
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 const { STOPS, PROJECTS, SKILLS, EMAIL } = window.PORTFOLIO;
+const HOBBIES = window.PORTFOLIO.HOBBIES || [];
 
 /* ---------------- graph ---------------- */
 const nodes = [];
@@ -286,6 +287,42 @@ const LM = {};
   plaque(g, 'Skills', r.x + r.w / 2, r.y - 8, s.color);
 })();
 
+// Hobbies: five-a-side pitch + clubhouse in the riverside park
+(() => {
+  const s = S.hobbies; if (!s) return;
+  const P = { x: 1254, y: 706, w: 128, h: 84 }, C = { x: 1258, y: 800, w: 112, h: 44 };
+  LM.hobbies = C; obstacles.push(P, C);
+  const g = stopGroup('hobbies');
+  // pitch
+  el('rect', { x: P.x + 6, y: P.y + 7, width: P.w, height: P.h, rx: 3, fill: 'rgba(0,0,0,.2)' }, g);
+  for (let k = 0; k < 8; k++) el('rect', { x: P.x + k * P.w / 8, y: P.y, width: P.w / 8 + .5, height: P.h, fill: k % 2 ? '#3f9a46' : '#4caf50' }, g);
+  snowRoof(g, P.x, P.y, P.w, P.h);
+  const ln = { fill: 'none', stroke: '#fff', 'stroke-width': 2 };
+  const ix = P.x + 6, iy = P.y + 6, iw = P.w - 12, ih = P.h - 12, cy = iy + ih / 2;
+  el('rect', { x: ix, y: iy, width: iw, height: ih, ...ln }, g);
+  el('line', { x1: ix + iw / 2, y1: iy, x2: ix + iw / 2, y2: iy + ih, ...ln }, g);
+  el('circle', { cx: ix + iw / 2, cy, r: 11, ...ln }, g);
+  el('rect', { x: ix, y: cy - 18, width: 16, height: 36, ...ln }, g);
+  el('rect', { x: ix + iw - 16, y: cy - 18, width: 16, height: 36, ...ln }, g);
+  [[ix - 5, cy - 9], [ix + iw, cy - 9]].forEach(([x, y]) => el('rect', { x, y, width: 5, height: 18, fill: '#e9ecef', stroke: '#9aa0a6', 'stroke-width': 1 }, g));
+  [[ix, iy], [ix + iw, iy], [ix, iy + ih], [ix + iw, iy + ih]].forEach(([x, y]) => el('circle', { cx: x, cy: y, r: 2.5, fill: '#d62839' }, g));
+  // two little teams + the ball
+  [[.2, .3], [.3, .7], [.38, .45], [.12, .5], [.45, .25]].forEach(([fx, fy]) => el('circle', { cx: ix + iw * fx, cy: iy + ih * fy, r: 4, fill: '#d62839', stroke: '#fff', 'stroke-width': 1.6 }, g));
+  [[.8, .3], [.7, .7], [.62, .55], [.88, .5], [.56, .8]].forEach(([fx, fy]) => el('circle', { cx: ix + iw * fx, cy: iy + ih * fy, r: 4, fill: '#1d3557', stroke: '#a8dadc', 'stroke-width': 1.6 }, g));
+  el('circle', { cx: ix + iw * .5 + 5, cy: cy - 3, r: 2.6, fill: '#fff', stroke: '#222', 'stroke-width': .8 }, g);
+  // clubhouse (movies + gaming)
+  flatRoof(g, C, '#3d405b', '#2b2d42');
+  const gx = C.x + 34, gy = C.y + 22;   // gamepad
+  el('path', { d: `M${gx - 16},${gy - 6} Q${gx - 20},${gy + 10} ${gx - 12},${gy + 9} L${gx - 6},${gy + 3} L${gx + 6},${gy + 3} L${gx + 12},${gy + 9} Q${gx + 20},${gy + 10} ${gx + 16},${gy - 6} Q${gx},${gy - 10} ${gx - 16},${gy - 6} Z`, fill: '#f1faee' }, g);
+  el('path', { d: `M${gx - 11},${gy - 2} h6 M${gx - 8},${gy - 5} v6`, stroke: '#3d405b', 'stroke-width': 2 }, g);
+  [[8, -3, '#d62839'], [12, 0, '#2a9d8f']].forEach(([dx, dy, c]) => el('circle', { cx: gx + dx, cy: gy + dy, r: 2, fill: c }, g));
+  const fx = C.x + 66, fy = C.y + 12;   // film clapper
+  el('rect', { x: fx, y: fy + 6, width: 26, height: 16, rx: 2, fill: '#f1faee' }, g);
+  el('path', { d: `M${fx},${fy + 6} L${fx + 2},${fy} L${fx + 28},${fy - 2} L${fx + 26},${fy + 6} Z`, fill: '#f1faee' }, g);
+  [6, 13, 20].forEach(d => el('line', { x1: fx + d, y1: fy + 5, x2: fx + d + 3, y2: fy - 1, stroke: '#3d405b', 'stroke-width': 2.5 }, g));
+  plaque(g, 'Hobbies', C.x + C.w / 2, C.y + C.h + 4, s.color);
+})();
+
 /* ---- blocks: fill with houses / parks ---- */
 const blockXs = [[XS[0], XS[1]], [XS[1], XS[2]], [XS[2], XS[3]], [XS[3], XS[4]]];
 const blockYs = [[YS[0], YS[1]], [YS[1], YS[2]], [YS[2], YS[3]]];
@@ -301,7 +338,10 @@ blockYs.forEach(([y0, y1], bj) => blockXs.forEach(([x0, x1], bi) => {
     el('path', { d, fill: 'none', stroke: '#e3d7b8', 'stroke-width': 9, 'stroke-linecap': 'round' }, gBlocks);
     for (let k = 0; k < 34; k++){
       const x = bx + 16 + rand() * (bw - 32), y = by + 16 + rand() * (bh - 32);
-      if (Math.abs(x - riverX(y)) > riverW(y) + 54) tree(x, y, 13 + rand() * 10);
+      if (Math.abs(x - riverX(y)) > riverW(y) + 54){
+        const rr = 13 + rand() * 10;
+        if (!hits({ x: x - rr, y: y - rr, w: rr * 2, h: rr * 2 }, 6)) tree(x, y, rr);
+      }
     }
     return;
   }
@@ -605,6 +645,13 @@ function renderStop(s){
   } else if (s.kind === 'skills'){
     h += `<p class="lead">Darker tags are the ones I'm most fluent in.</p>`;
     SKILLS.forEach(g => { h += `<div class="skillgrp"><h5>${esc(g.h)}</h5><div class="tags">${g.strong.map(t => `<span class="tag strong">${esc(t)}</span>`).join('')}${g.rest.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div></div>`; });
+  } else if (s.kind === 'hobbies'){
+    h += `<p class="lead">When I'm not writing code, this is where you'll find me.</p>`;
+    HOBBIES.forEach(x => {
+      h += `<div class="card hobby"><span class="hobby-ic" aria-hidden="true">${esc(x.icon || '')}</span><div><h4>${esc(x.title)}</h4><p>${esc(x.text)}</p>`;
+      if (x.gamertag) h += `<div class="tags"><span class="tag strong">${esc(x.gamertag)}</span></div>`;
+      h += `</div></div>`;
+    });
   } else if (s.kind === 'contact'){
     h += `<p class="lead">I'm open to new-grad and co-op software roles. The fastest way to reach me is email.</p>
       <div class="contact">

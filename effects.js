@@ -262,7 +262,7 @@ const DECORATE = {
     const d = decoLayer(), l = landLayer();
     const bulbs = ['#ff4d4d', '#ffd23f', '#3ddc84', '#4da3ff'];
     M.houses.forEach((h, i) => { if (i % 3 !== 2) lights(d, h, 13, bulbs, 1); });
-    landmarkRects().forEach(r => { lights(l, r, 18, bulbs, 2); wreath(l, r.x + r.w - 20, r.y + r.h - 22); });
+    landmarkRects().forEach(r => { lights(l, r, 18, bulbs, 2); if (r.h >= 80) wreath(l, r.x + r.w - 20, r.y + 20); });
     // Town Christmas tree in the riverside park, clearing the trees around it.
     const cx = 1585, cy = 878;
     M.trees.forEach(tr => { if (Math.hypot(tr.x - cx, tr.y - cy) < 95) tr.g.remove(); });
