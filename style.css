@@ -143,3 +143,10 @@ svg.snowy .ripple{display:none}
 .hobby-ic{font-size:26px;line-height:1;flex:none;width:34px;text-align:center;margin-top:1px}
 .card.hobby p{margin:4px 0 0;font-size:14.5px;line-height:1.5;color:var(--ink-2)}
 .card.hobby .tags{margin:8px 0 0}
+
+/* grey-sky days: duller colours, and ripples on the river when it rains */
+svg.overcast{filter:saturate(.72) brightness(.97)}
+.rip-a{animation:ripple 1.6s ease-in-out infinite}
+.rip-b{animation:ripple 1.6s ease-in-out -.8s infinite}
+@keyframes ripple{0%,100%{opacity:.9}50%{opacity:.1}}
+@media (prefers-reduced-motion: reduce){ .rip-a,.rip-b{animation:none;opacity:.6} }
