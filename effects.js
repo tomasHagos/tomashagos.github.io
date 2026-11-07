@@ -102,7 +102,7 @@ canvas.id = 'wx';
 canvas.setAttribute('aria-hidden', 'true');
 svg.after(canvas);
 const ctx = canvas.getContext('2d');
-let cw = 0, ch = 0, dpr = 1, kind = null, parts = [], blobs = [], flash = 0, t = 0;
+let cw = 0, ch = 0, dpr = 1, kind = null, parts = [], blobs = [], skyClouds = [], splashes = [], flash = 0, t = 0;
 function resize(){
   dpr = Math.min(2, window.devicePixelRatio || 1);
   cw = innerWidth; ch = innerHeight;
@@ -111,20 +111,58 @@ function resize(){
   seedParticles();
 }
 const R = (a, b) => a + Math.random() * (b - a);
+const GREY = { cloudy: true, rain: true, storm: true };
+// A cloud is a lumpy cluster of circles, seen from above. Blurring is slow, so
+// each cloud (and its shadow) is rendered once into a small sprite and reused.
+function sprite(puffs, fill, pad){
+  const xs = puffs.map(p => p.dx), ys = puffs.map(p => p.dy), rs = puffs.map(p => p.r);
+  const minX = Math.min(...xs.map((x, i) => x - rs[i])) - pad, maxX = Math.max(...xs.map((x, i) => x + rs[i])) + pad;
+  const minY = Math.min(...ys.map((y, i) => y - rs[i])) - pad, maxY = Math.max(...ys.map((y, i) => y + rs[i])) + pad;
+  const c = document.createElement('canvas');
+  c.width = Math.ceil((maxX - minX) * dpr); c.height = Math.ceil((maxY - minY) * dpr);
+  const g = c.getContext('2d');
+  g.scale(dpr, dpr); g.filter = 'blur(5px)'; g.fillStyle = fill;
+  g.beginPath();
+  for (const p of puffs){ g.moveTo(p.dx - minX + p.r, p.dy - minY); g.arc(p.dx - minX, p.dy - minY, p.r, 0, Math.PI * 2); }
+  g.fill();
+  return { img: c, ox: minX, oy: minY, w: maxX - minX, h: maxY - minY };
+}
+function makeCloud(x){
+  const s = R(.8, 1.5), puffs = [];
+  const n = 6 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < n; i++) puffs.push({ dx: R(-90, 90) * s, dy: R(-34, 34) * s, r: R(34, 60) * s });
+  return { x, y: R(-40, ch + 40), v: R(12, 24), s,
+    body: sprite(puffs, CLOUD_FILL[kind] || CLOUD_FILL.cloudy, 12),
+    shade: sprite(puffs, 'rgba(15,25,40,.14)', 12) };
+}
 function seedParticles(){
-  parts = []; blobs = [];
+  parts = []; blobs = []; skyClouds = []; splashes = [];
   const area = cw * ch;
   if (kind === 'snow') for (let i = 0; i < area / 7000; i++) parts.push({ x: R(0, cw), y: R(0, ch), r: R(1, 3.2), vy: R(25, 60), sway: R(10, 30), p: R(0, 6.28), w: R(.6, 1.6) });
-  if (kind === 'rain' || kind === 'storm') for (let i = 0; i < area / (kind === 'storm' ? 2600 : 4200); i++) parts.push({ x: R(-100, cw), y: R(0, ch), len: R(10, 22), vy: R(650, 950) });
+  if (kind === 'rain' || kind === 'storm') for (let i = 0; i < area / (kind === 'storm' ? 1700 : 2600); i++) parts.push({ x: R(-150, cw), y: R(0, ch), len: R(14, 28), vy: R(700, 1000) });
   if (kind === 'fog') for (let i = 0; i < 7; i++) blobs.push({ x: R(0, cw), y: R(0, ch), r: R(.35, .6) * Math.max(cw, ch), v: R(6, 16) });
+  if (GREY[kind]){
+    const n = Math.max(3, Math.round(cw / (kind === 'cloudy' ? 300 : 260)));
+    for (let i = 0; i < n; i++) skyClouds.push(makeCloud(R(-200, cw + 100)));
+  }
 }
-const TINT = { cloudy: 'rgba(40,52,64,.07)', rain: 'rgba(25,40,70,.13)', storm: 'rgba(20,28,55,.22)', snow: 'rgba(255,255,255,.05)', fog: 'rgba(236,240,244,.12)' };
+const TINT = { cloudy: 'rgba(48,58,72,.13)', rain: 'rgba(28,42,72,.22)', storm: 'rgba(18,26,52,.32)', snow: 'rgba(255,255,255,.05)', fog: 'rgba(236,240,244,.12)' };
+const CLOUD_FILL = { cloudy: 'rgba(250,251,253,.46)', rain: 'rgba(214,220,229,.46)', storm: 'rgba(170,178,192,.52)' };
+const blit = (sp, x, y) => ctx.drawImage(sp.img, x + sp.ox, y + sp.oy, sp.w, sp.h);
 function draw(dt){
   if (!kind) return;
   if (M.reduceMotion) dt = 0;
   t += dt;
   ctx.clearRect(0, 0, cw, ch);
   if (TINT[kind]){ ctx.fillStyle = TINT[kind]; ctx.fillRect(0, 0, cw, ch); }
+  // cloud shadows on the ground (drawn under the rain)
+  if (skyClouds.length){
+    for (const c of skyClouds){
+      c.x += c.v * dt;
+      if (c.x - 200 * c.s > cw){ Object.assign(c, makeCloud(-220 * c.s)); }
+    }
+    for (const c of skyClouds) blit(c.shade, c.x + 60, c.y + 70);
+  }
   if (kind === 'snow'){
     ctx.fillStyle = 'rgba(255,255,255,.9)';
     ctx.beginPath();
@@ -137,15 +175,27 @@ function draw(dt){
     ctx.fill();
   }
   if (kind === 'rain' || kind === 'storm'){
-    const slant = .18;
-    ctx.strokeStyle = 'rgba(214,228,246,.5)'; ctx.lineWidth = 1.2; ctx.lineCap = 'round';
+    // splashes: little rings that pop up where drops land
+    const rate = cw * ch / (kind === 'storm' ? 7000 : 11000);
+    if (dt) for (let i = 0, n = rate * dt + Math.random(); i < n - 1; i++) splashes.push({ x: R(0, cw), y: R(0, ch), age: 0 });
+    ctx.lineWidth = 1.3;
+    splashes = splashes.filter(sp => (sp.age += dt) < .4);
+    for (const sp of splashes){
+      const k = sp.age / .4, rx = 2 + 9 * k;
+      ctx.strokeStyle = `rgba(60,95,140,${(.6 * (1 - k)).toFixed(3)})`;
+      ctx.beginPath(); ctx.ellipse(sp.x, sp.y, rx, rx * .5, 0, 0, Math.PI * 2); ctx.stroke();
+    }
+    // streaks: a dark core so they show on snow, with a light edge so they show on grass
+    const slant = .2;
+    ctx.lineCap = 'round';
     ctx.beginPath();
     for (const d of parts){
       d.y += d.vy * dt; d.x += d.vy * slant * dt;
-      if (d.y > ch + 20){ d.y = R(-40, 0); d.x = R(-100, cw); }
+      if (d.y > ch + 30){ d.y = R(-60, 0); d.x = R(-150, cw); }
       ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - d.len * slant, d.y - d.len);
     }
-    ctx.stroke();
+    ctx.strokeStyle = 'rgba(225,236,250,.35)'; ctx.lineWidth = 2.6; ctx.stroke();
+    ctx.strokeStyle = 'rgba(52,82,124,.6)'; ctx.lineWidth = 1.3; ctx.stroke();
   }
   if (kind === 'storm'){
     if (dt && Math.random() < dt * .12) flash = 1;
@@ -159,17 +209,56 @@ function draw(dt){
       ctx.fillStyle = g; ctx.fillRect(b.x - b.r, b.y - b.r, b.r * 2, b.r * 2);
     }
   }
+  // the clouds themselves, highest of all
+  if (skyClouds.length){
+    for (const c of skyClouds) blit(c.body, c.x, c.y);
+  }
 }
 M.onFrame(draw);
 addEventListener('resize', resize);
+
+/* Wet world for rain/storm: shiny roads, puddles and ripples on the river. */
+let wetLayer = null;
+function buildWet(){
+  const g = el('g', { 'pointer-events': 'none', class: 'wet' });
+  M.layers.deco.before(g);
+  const { XS, YS, ROAD, riverX, riverW, H } = M;
+  const x0 = XS[0], x1 = XS[XS.length - 1], y0 = YS[0], y1 = YS[YS.length - 1];
+  YS.forEach(y => el('rect', { x: x0 - ROAD, y: y - ROAD, width: x1 - x0 + ROAD * 2, height: ROAD * 2, fill: 'rgba(150,180,220,.16)' }, g));
+  XS.forEach(x => el('rect', { x: x - ROAD, y: y0 - ROAD, width: ROAD * 2, height: y1 - y0 + ROAD * 2, fill: 'rgba(150,180,220,.16)' }, g));
+  for (let i = 0; i < 46; i++){
+    const horiz = Math.random() < .5;
+    const x = horiz ? R(x0, x1) : XS[Math.floor(Math.random() * XS.length)] + R(-16, 16);
+    const y = horiz ? YS[Math.floor(Math.random() * YS.length)] + R(-16, 16) : R(y0, y1);
+    const rx = R(9, 22), ry = R(4, 8);
+    el('ellipse', { cx: x, cy: y, rx: horiz ? rx : ry, ry: horiz ? ry : rx, fill: 'rgba(120,150,190,.4)', stroke: 'rgba(255,255,255,.3)', 'stroke-width': 1 }, g);
+  }
+  // ripples: two groups that pulse in turn (cheaper than animating each ring)
+  const ripA = el('g', { class: 'rip-a' }, g), ripB = el('g', { class: 'rip-b' }, g);
+  for (let i = 0; i < 40; i++){
+    const y = R(-200, H + 200);
+    if (YS.some(ry => Math.abs(ry - y) < 60)) continue;   // not on bridges
+    const x = riverX(y) + R(-.7, .7) * riverW(y), r = R(4, 8), grp = i % 2 ? ripB : ripA;
+    el('circle', { cx: x, cy: y, r, fill: 'none', stroke: 'rgba(235,245,252,.9)', 'stroke-width': 1.5 }, grp);
+    el('circle', { cx: x, cy: y, r: r * 1.9, fill: 'none', stroke: 'rgba(235,245,252,.5)', 'stroke-width': 1.2 }, grp);
+  }
+  return g;
+}
+function setWet(on){
+  if (on && !wetLayer) wetLayer = buildWet();
+  if (wetLayer) wetLayer.style.display = on ? '' : 'none';
+}
 
 function applyWeather(k, live){
   kind = KINDS[k] ? k : 'clear';
   // White ground for snow, and always for Christmas (white Christmas).
   svg.classList.toggle('snowy', kind === 'snow' || (holiday && holiday.id === 'christmas'));
+  // Duller colours under a grey sky.
+  svg.classList.toggle('overcast', !!GREY[kind]);
+  setWet(kind === 'rain' || kind === 'storm');
   // Darker drifting cloud shadows when it's grey out.
   const stop = document.querySelector('#cloud stop');
-  if (stop) stop.setAttribute('stop-opacity', { cloudy: .26, rain: .3, storm: .36, snow: .2, fog: .1 }[kind] || .16);
+  if (stop) stop.setAttribute('stop-opacity', { cloudy: .3, rain: .34, storm: .4, snow: .2, fog: .1 }[kind] || .16);
   resize();
   renderPill(kind, live);
 }
@@ -181,17 +270,24 @@ const decoLayer = () => layerAfter(M.layers.deco);
 const landLayer = () => layerAfter(M.layers.landmarks);
 
 // A string of bulbs around a rectangle. Every other bulb twinkles out of phase.
+// Bulbs go into two shared groups per layer that blink out of phase. Animating
+// two groups is far cheaper than animating every bulb on its own.
+function bulbs(g){
+  if (!g._wires){ g._wires = el('g', {}, g); g._a = el('g', { class: 'lt-a' }, g); g._b = el('g', { class: 'lt-b' }, g); }
+  return g;
+}
 function lights(g, r, gap, colors, inset = 0){
+  bulbs(g);
   const x = r.x + inset, y = r.y + inset, w = r.w - inset * 2, h = r.h - inset * 2;
   const per = 2 * (w + h), n = Math.max(4, Math.round(per / gap));
-  el('rect', { x, y, width: w, height: h, rx: 2, fill: 'none', stroke: 'rgba(25,25,25,.35)', 'stroke-width': .9 }, g);
+  el('rect', { x, y, width: w, height: h, rx: 2, fill: 'none', stroke: 'rgba(25,25,25,.35)', 'stroke-width': .9 }, g._wires);
   for (let k = 0; k < n; k++){
     let d = k * per / n, px, py;
     if (d < w){ px = x + d; py = y; }
     else if ((d -= w) < h){ px = x + w; py = y + d; }
     else if ((d -= h) < w){ px = x + w - d; py = y + h; }
     else { d -= w; px = x; py = y + h - d; }
-    el('circle', { cx: px, cy: py, r: 2.7, fill: colors[k % colors.length], class: `lt ${k % 2 ? 'lt-b' : 'lt-a'}` }, g);
+    el('circle', { cx: px, cy: py, r: 2.7, fill: colors[k % colors.length], class: 'lt' }, k % 2 ? g._b : g._a);
   }
 }
 const landmarkRects = () => Object.values(M.landmarks);
@@ -216,10 +312,11 @@ function bigTree(g, cx, cy){
     el('path', { d: star(r, rot), fill: c, stroke: 'rgba(0,0,0,.12)', 'stroke-width': 1.5 }, g));
   // snow dusting + ornaments
   for (let k = 0; k < 10; k++){ const a = k * .63, rr = 30 + (k % 3) * 9; el('circle', { cx: cx + Math.cos(a) * rr, cy: cy + Math.sin(a) * rr - 2, r: 3.5, fill: '#fbfdff', opacity: .8 }, g); }
+  const orn1 = el('g', { class: 'lt-a' }, g), orn2 = el('g', { class: 'lt-b' }, g);
   const orn = ['#d62828', '#f2c14e', '#3a86ff', '#ff70a6', '#ffffff'];
   for (let k = 0; k < 22; k++){
     const a = k * 2.4, rr = 12 + (k * 7) % 46;
-    el('circle', { cx: cx + Math.cos(a) * rr, cy: cy + Math.sin(a) * rr, r: 3.6, fill: orn[k % orn.length], stroke: 'rgba(0,0,0,.25)', 'stroke-width': .8, class: `lt ${k % 2 ? 'lt-b' : 'lt-a'}` }, g);
+    el('circle', { cx: cx + Math.cos(a) * rr, cy: cy + Math.sin(a) * rr, r: 3.6, fill: orn[k % orn.length], stroke: 'rgba(0,0,0,.25)', 'stroke-width': .8, class: 'lt' }, k % 2 ? orn2 : orn1);
   }
   // gold star on top
   let s = '';

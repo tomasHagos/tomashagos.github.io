@@ -713,7 +713,7 @@ addEventListener('resize', applyCam);
 /* Read-only handles for effects.js (weather + holiday decorations). */
 const frameHooks = [];
 window.PortfolioMap = {
-  NS, el, svg, world, W, H, XS, YS, riverX, riverW, rand,
+  NS, el, svg, world, W, H, XS, YS, ROAD, riverX, riverW, rand,
   layers: { ground: gGround, deco: gDeco, landmarks: gLand, route: gRoute, rider: gRider, clouds: gClouds },
   trees: TREES, houses: HOUSES, landmarks: LM, stops: S,
   riderBody: body,
