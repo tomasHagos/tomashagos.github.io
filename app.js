@@ -55,7 +55,6 @@ const gGround = L('ground'), gRiver = L('river'), gBlocks = L('blocks'), gRoads 
       gLand = L('landmarks'), gRoute = L('routeLayer'), gTrail = L('trail'), gPins = L('pins'), gRider = L('rider'), gClouds = L('clouds');
 
 el('rect', { x: -2000, y: -2000, width: W + 4000, height: H + 4000, fill: '#6f9f52', class: 'g-out' }, gGround);
-el('rect', { x: -2000, y: -2000, width: W + 4000, height: H + 4000, fill: 'url(#grassTex)', opacity: .55, class: 'g-tex' }, gGround);
 el('rect', { x: 40, y: 40, width: W - 80, height: H - 80, rx: 60, fill: 'url(#grassTex)', class: 'g-tex' }, gGround);
 
 const riverX = y => 1450 + 70 * Math.sin(y / 260 + 0.6) + 25 * Math.sin(y / 97);
@@ -535,6 +534,12 @@ function insets(){
   if (!p.classList.contains('open')) return isMobile() ? { r: 0, b: 56, l: 0, t: 120 } : { r: 0, b: 0, l: 250, t: 0 };
   return isMobile() ? { r: 0, b: p.offsetHeight, l: 0, t: 120 } : { r: p.offsetWidth + 36, b: 0, l: 250, t: 0 };
 }
+// Keep a dragged view from wandering off the edge of the town.
+function clampManual(){
+  const bx = cam.mode === 'overview' ? W / 2 : R.x, by = cam.mode === 'overview' ? H / 2 : R.y;
+  cam.manual.x = Math.min(W + 100, Math.max(-100, bx + cam.manual.x)) - bx;
+  cam.manual.y = Math.min(H + 100, Math.max(-100, by + cam.manual.y)) - by;
+}
 function camTarget(){
   if (cam.mode === 'overview') return { x: W / 2 + cam.manual.x, y: H / 2 + cam.manual.y, scale: overviewScale() * cam.zoomMul };
   return { x: R.x + cam.manual.x, y: R.y + cam.manual.y, scale: followScale() };
@@ -553,7 +558,7 @@ svg.addEventListener('pointermove', e => {
   if (!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   if (!dragMoved && Math.hypot(dx, dy) > 6){ dragMoved = true; svg.classList.add('dragging'); try { svg.setPointerCapture(drag.id); } catch (er) {} }
-  if (dragMoved){ cam.manual.x = drag.mx - dx / cam.scale; cam.manual.y = drag.my - dy / cam.scale; cam.x = camTarget().x; cam.y = camTarget().y; }
+  if (dragMoved){ cam.manual.x = drag.mx - dx / cam.scale; cam.manual.y = drag.my - dy / cam.scale; clampManual(); cam.x = camTarget().x; cam.y = camTarget().y; }
 });
 const endDrag = () => { drag = null; svg.classList.remove('dragging'); };
 svg.addEventListener('pointerup', endDrag); svg.addEventListener('pointercancel', endDrag);
@@ -562,7 +567,7 @@ svg.addEventListener('click', e => {
   const hit = e.target.closest('[data-stop]');
   if (hit) goTo(hit.getAttribute('data-stop'));
 });
-svg.addEventListener('wheel', e => { e.preventDefault(); cam.zoomMul = Math.min(2.2, Math.max(0.5, cam.zoomMul * Math.exp(-e.deltaY * 0.0015))); }, { passive: false });
+svg.addEventListener('wheel', e => { e.preventDefault(); cam.zoomMul = Math.min(1.9, Math.max(0.75, cam.zoomMul * Math.exp(-e.deltaY * 0.0015))); }, { passive: false });
 
 /* ---------------- loop ---------------- */
 const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;

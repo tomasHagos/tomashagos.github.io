@@ -146,7 +146,7 @@ function seedParticles(){
     for (let i = 0; i < n; i++) skyClouds.push(makeCloud(R(-200, cw + 100)));
   }
 }
-const TINT = { cloudy: 'rgba(48,58,72,.13)', rain: 'rgba(28,42,72,.22)', storm: 'rgba(18,26,52,.32)', snow: 'rgba(255,255,255,.05)', fog: 'rgba(236,240,244,.12)' };
+const TINT = { cloudy: 'rgba(48,58,72,.16)', rain: 'rgba(28,42,72,.25)', storm: 'rgba(18,26,52,.34)', snow: 'rgba(255,255,255,.05)', fog: 'rgba(236,240,244,.12)' };
 const CLOUD_FILL = { cloudy: 'rgba(250,251,253,.46)', rain: 'rgba(214,220,229,.46)', storm: 'rgba(170,178,192,.52)' };
 const blit = (sp, x, y) => ctx.drawImage(sp.img, x + sp.ox, y + sp.oy, sp.w, sp.h);
 function draw(dt){
@@ -253,8 +253,9 @@ function applyWeather(k, live){
   kind = KINDS[k] ? k : 'clear';
   // White ground for snow, and always for Christmas (white Christmas).
   svg.classList.toggle('snowy', kind === 'snow' || (holiday && holiday.id === 'christmas'));
-  // Duller colours under a grey sky.
-  svg.classList.toggle('overcast', !!GREY[kind]);
+  // The page behind the map shows through for a moment while the browser
+  // redraws during zoom. Match it to the ground so it doesn't flash green.
+  document.documentElement.classList.toggle('snowy', svg.classList.contains('snowy'));
   setWet(kind === 'rain' || kind === 'storm');
   // Darker drifting cloud shadows when it's grey out.
   const stop = document.querySelector('#cloud stop');

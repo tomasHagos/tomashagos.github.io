@@ -124,6 +124,8 @@ button{font:inherit;color:inherit}
 /* snow on the ground (svg.snowy is set by effects.js) */
 .snowcap{display:none}
 svg.snowy .snowcap{display:inline}
+/* page colour behind the map matches the snowy ground (no green flashes while zooming) */
+html.snowy, html.snowy body{background:#dbe4ec}
 svg.snowy .g-out{fill:#dbe4ec}
 svg.snowy .g-tex{fill:#edf2f6}
 svg.snowy .g-block{fill:#f6f9fb}
@@ -144,8 +146,7 @@ svg.snowy .ripple{display:none}
 .card.hobby p{margin:4px 0 0;font-size:14.5px;line-height:1.5;color:var(--ink-2)}
 .card.hobby .tags{margin:8px 0 0}
 
-/* grey-sky days: duller colours, and ripples on the river when it rains */
-svg.overcast{filter:saturate(.72) brightness(.97)}
+/* ripples on the river when it rains */
 .rip-a{animation:ripple 1.6s ease-in-out infinite}
 .rip-b{animation:ripple 1.6s ease-in-out -.8s infinite}
 @keyframes ripple{0%,100%{opacity:.9}50%{opacity:.1}}
