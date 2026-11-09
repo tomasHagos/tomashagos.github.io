@@ -1,5 +1,5 @@
 /*
- * First-visit intro for the 3D view (about 5 seconds):
+ * First-visit intro for the 3D view (about 8 seconds):
  *   a small plane flies over town -> the cyclist jumps out -> parachute drifts
  *   down to the street by Home -> he lands, walks a few steps to his bike and
  *   hops on -> the camera pulls back to the town overview.
@@ -23,7 +23,7 @@ export function createIntro({ THREE, scene, camera, controls, rig, M, X, Z, mobi
   const start = M.rider();                         // the bike waits where the cyclist starts
   const bikeX = X(start.x), bikeZ = Z(start.y);
   const land = { x: bikeX + 6, z: bikeZ + 46 };    // touch down a few steps behind the bike
-  const ALT = mobile ? 380 : 420;
+  const ALT = mobile ? 500 : 540;                 // jump height
 
   /* ---------- plane ---------- */
   const plane = new THREE.Group();
@@ -89,11 +89,13 @@ export function createIntro({ THREE, scene, camera, controls, rig, M, X, Z, mobi
   card.classList.add('hide');
 
   /* ---------- timeline ---------- */
-  const T = { jump: 1.0, open: 1.45, land: 3.7, walkEnd: 4.7, mount: 5.0 };
+  const T = { jump: 1.8, open: 2.55, land: 6.0, walkEnd: 7.4, mount: 7.8 };   // seconds
   const homeZ = bikeZ + 20;
-  const planeAt = t => new THREE.Vector3(bikeX - 600 + 600 * t, ALT + Math.sin(t * 2) * 4, homeZ - 30);
+  const PLANE_SPEED = 360;                          // reaches the jump point (over Home) at T.jump
+  const planeAt = t => new THREE.Vector3(bikeX + PLANE_SPEED * (t - T.jump), ALT + Math.sin(t * 2) * 4, homeZ - 30);
   const ease = u => u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
   const jumpFrom = planeAt(T.jump).add(new THREE.Vector3(0, -8, 0));
+  const FALL = 220;                                // free-fall 'gravity'
   let t = 0, done = false;
   const camWant = new THREE.Vector3(), lookWant = new THREE.Vector3(), look = new THREE.Vector3();
   rig.visible = false;
@@ -128,17 +130,17 @@ export function createIntro({ THREE, scene, camera, controls, rig, M, X, Z, mobi
     let p = new THREE.Vector3();
     if (t < T.jump){
       person.visible = false;
-      camWant.copy(plane.position).add(new THREE.Vector3(-170, 60, 150));
+      camWant.copy(plane.position).add(new THREE.Vector3(-170 - 60 * Math.max(0, 1 - t / T.jump), 60, 150));
       lookWant.copy(plane.position);
     } else if (t < T.open){
       const u = t - T.jump;                                   // short free fall, carried forward by the plane
-      p.set(jumpFrom.x + 120 * (1 - Math.exp(-u * 3)), jumpFrom.y - 300 * u * u, jumpFrom.z);
+      p.set(jumpFrom.x + 120 * (1 - Math.exp(-u * 3)), jumpFrom.y - FALL * u * u, jumpFrom.z);
       person.visible = true;
-      person.rotation.set(0, 0, -1.2 + u);                     // tumbling out, belly down
+      person.rotation.set(0, 0, -1.2 + u * .7);                // tumbling out, belly down
       legs.forEach((h, i) => { h.rotation.z = Math.sin(t * 14 + i * Math.PI) * .5; });
     } else if (t < T.land){
       const u = (t - T.open) / (T.land - T.open), e = 1 - Math.pow(1 - u, 1.6);
-      const top = new THREE.Vector3(jumpFrom.x + 120 * (1 - Math.exp(-(T.open - T.jump) * 3)), jumpFrom.y - 300 * (T.open - T.jump) ** 2, jumpFrom.z);
+      const top = new THREE.Vector3(jumpFrom.x + 120 * (1 - Math.exp(-(T.open - T.jump) * 3)), jumpFrom.y - FALL * (T.open - T.jump) ** 2, jumpFrom.z);
       const sway = Math.sin(t * 2.4) * 14 * (1 - u);
       p.set(top.x + (land.x - top.x) * e + sway, top.y * (1 - e) + 3.2, top.z + (land.z - top.z) * e);
       person.visible = true;
@@ -167,8 +169,9 @@ export function createIntro({ THREE, scene, camera, controls, rig, M, X, Z, mobi
     if (t >= T.jump) person.position.copy(p);
     // camera: chase the plane, then the jumper, then settle beside the bike
     if (t >= T.jump && t < T.land){
-      camWant.copy(person.position).add(new THREE.Vector3(-110, 70, 170));
-      camWant.y = Math.max(camWant.y, 135);            // stay above the rooftops near the ground
+      const orbit = new THREE.Vector3(-110, 70, 170).applyAxisAngle(new THREE.Vector3(0, 1, 0), -(t - T.jump) * .26);   // swing out over the open street, away from Home
+      camWant.copy(person.position).add(orbit);
+      camWant.y = Math.max(camWant.y, 150);            // stay above the rooftops near the ground
       lookWant.copy(person.position).add(new THREE.Vector3(0, -40, 0));
     } else if (t >= T.land){
       camWant.set(bikeX - 70, 120, bikeZ + 200);
