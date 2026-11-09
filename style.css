@@ -162,3 +162,20 @@ body.view-3d #map{visibility:hidden}
 /* first-visit intro (intro3d.js) */
 .intro-skip{position:fixed;right:18px;bottom:24px;z-index:9}
 @media (max-width: 820px){ .intro-skip{right:10px;bottom:72px} }
+
+.sub-short{display:none}
+/* ---------- phone header: one clean bar, controls row underneath, ride button at the bottom ---------- */
+@media (max-width: 820px){
+  .sub-long{display:none}
+  .sub-short{display:inline}
+  .brand{left:10px;right:10px;top:calc(10px + env(safe-area-inset-top));max-width:none;padding:9px 14px 10px;border-radius:14px;box-shadow:3px 3px 0 var(--ink)}
+  .brand h1{font-size:19px}
+  .brand p{font-size:12.5px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .controls{left:10px;right:10px;top:calc(76px + env(safe-area-inset-top));flex-direction:row;align-items:center;justify-content:space-between;gap:8px}
+  .controls .btn{box-shadow:2px 2px 0 var(--ink);padding:6px 12px;font-size:13px}
+  .ctl-row{gap:6px}
+  .wx-pill{box-shadow:2px 2px 0 var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis}
+  /* the ride button floats above the route bar, where a thumb can reach it */
+  #tourBtn{position:fixed;right:10px;bottom:calc(64px + env(safe-area-inset-bottom));box-shadow:3px 3px 0 var(--ink);padding:9px 16px;font-size:14px;max-width:calc(100vw - 20px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  body:has(.intro:not(.hide)) #tourBtn, body:has(.intro-skip) #tourBtn{display:none}
+}
