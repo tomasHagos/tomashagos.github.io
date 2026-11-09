@@ -496,7 +496,7 @@ function goTo(id){
   const cum = [0]; for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + dist(pts[k - 1], pts[k]));
   const polyLen = cum[cum.length - 1];
   ride = {
-    target: s, pts, len, t0: performance.now(), dur: reduceMotion ? 1 : Math.max(1100, len / 0.52), s: 0, cx: R.x, cy: R.y,
+    target: s, pts, len, t0: performance.now(), dur: reduceMotion ? 1 : Math.max(1300, len / 0.42), s: 0, cx: R.x, cy: R.y,
     segmentAt(sv){
       const p = sv / len * polyLen; let k = 1; while (k < cum.length - 1 && cum[k] < p) k++;
       const nodeOf = pt => nodes.reduce((b, n) => dist(n, pt) < dist(b, pt) ? n : b, nodes[0]);
