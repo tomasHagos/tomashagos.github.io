@@ -38,6 +38,11 @@ export function createTraffic(scene, M, { X, Z, mobile }){
   const lightGeo = new THREE.BoxGeometry(1, 2.4, 3);
   const headMat = new THREE.MeshBasicMaterial({ color: 0xfff6d5 }), tailMat = new THREE.MeshBasicMaterial({ color: 0xd62828 });
   const blobGeo = new THREE.PlaneGeometry(30, 17), blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .22, depthWrite: false });
+  const beamTex = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 64; const g = c.getContext('2d');
+    const r = g.createRadialGradient(8, 32, 0, 8, 32, 60); r.addColorStop(0, 'rgba(255,245,210,.95)'); r.addColorStop(1, 'rgba(255,240,200,0)');
+    g.fillStyle = r; g.beginPath(); g.moveTo(0, 26); g.lineTo(64, 4); g.lineTo(64, 60); g.lineTo(0, 38); g.fill(); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const beamMat = new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+  const beamGeo = new THREE.PlaneGeometry(56, 34); beamGeo.rotateX(-Math.PI / 2); beamGeo.translate(13 + 28, .9, 0);
   const cars = [];
   const N_CARS = mobile ? 10 : 16;
   const used = new Set();
@@ -54,6 +59,7 @@ export function createTraffic(scene, M, { X, Z, mobile }){
       const t = new THREE.Mesh(lightGeo, tailMat); t.position.set(-13.2, 4.6, z); g.add(t);
     });
     // Shadows are rendered once for the static town, so moving things carry a soft blob instead.
+    const beam = new THREE.Mesh(beamGeo, beamMat); beam.visible = false; g.add(beam); g.userData.beam = beam;
     const blob = new THREE.Mesh(blobGeo, blobMat); blob.rotation.x = -Math.PI / 2; blob.position.set(2, .5, 2); g.add(blob);
     scene.add(g);
     const [a, b] = e;
@@ -170,6 +176,7 @@ export function createTraffic(scene, M, { X, Z, mobile }){
   }
 
   return {
+    setNight(lit){ beamMat.opacity = .7 * lit; cars.forEach(c => { c.g.userData.beam.visible = lit > .01; }); },
     update(dt, rider){ if (!dt) return; updateCars(Math.min(dt, .05), rider); updatePeople(Math.min(dt, .05)); },
     weaveFor,
     cars, people,

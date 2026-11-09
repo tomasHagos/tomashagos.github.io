@@ -331,6 +331,74 @@ if (FX.holiday === 'christmas'){
   bike.add(hat); bike.userData.helmet.material = solid(0xd62828);
 }
 
+/* ---------------- day / night (Winnipeg's real sun, from sun.js) ---------------- */
+const daySky = new THREE.Color(0xa9d4f0), dayHemi = new THREE.Color(0xdff2ff), dayHemiGround = new THREE.Color(0x6f8f4f);
+const NIGHT_SKY = new THREE.Color(0x0b1426), DUSK = new THREE.Color(0xf0926a), MOON = new THREE.Color(0x9db4ff), SUNC = new THREE.Color(0xfff1dc);
+scene.background = new THREE.Color(); 
+let lastDay = -1;
+// street lamps on every corner of every intersection
+const LAMP_SPOTS = [];
+XS.forEach(x => YS.forEach(y => [[-1, -1], [1, 1]].forEach(([sx, sy]) => LAMP_SPOTS.push([X(x + sx * 38), Z(y + sy * 38)]))));
+const lampPoles = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1.3, 30, 6), solid(0x3a3f45), LAMP_SPOTS.length);
+const lampHeads = new THREE.InstancedMesh(new THREE.SphereGeometry(3.4, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffe6a8 }), LAMP_SPOTS.length);
+{ const o = new THREE.Object3D();
+  LAMP_SPOTS.forEach(([x, z], i) => { o.position.set(x, 15, z); o.updateMatrix(); lampPoles.setMatrixAt(i, o.matrix); o.position.set(x, 31, z); o.updateMatrix(); lampHeads.setMatrixAt(i, o.matrix); });
+  scene.add(lampPoles, lampHeads); }
+// soft pools of light under each lamp (additive), only visible at night
+function glowTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(255,220,150,1)'); r.addColorStop(.4, 'rgba(255,200,120,.45)'); r.addColorStop(1, 'rgba(255,190,110,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const GLOW = glowTexture();
+const poolMat = new THREE.MeshBasicMaterial({ map: GLOW, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+const pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(90, 90), poolMat, LAMP_SPOTS.length);
+{ const o = new THREE.Object3D(); o.rotation.x = -Math.PI / 2;
+  LAMP_SPOTS.forEach(([x, z], i) => { o.position.set(x, 4.5, z); o.updateMatrix(); pools.setMatrixAt(i, o.matrix); }); pools.renderOrder = 2; scene.add(pools); }
+const haloMat = new THREE.SpriteMaterial({ map: GLOW, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+const halos = LAMP_SPOTS.map(([x, z]) => { const s = new THREE.Sprite(haloMat); s.position.set(x, 31, z); s.scale.set(26, 26, 1); scene.add(s); return s; });
+// lit windows on houses (two per house, facing the street side)
+const winMat = new THREE.MeshBasicMaterial({ color: 0xffd37a, transparent: true, opacity: 0 });
+const houseWins = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), winMat, M.houses.length * 2);
+{ const o = new THREE.Object3D();
+  M.houses.forEach((hs, i) => {
+    const h = 26 + (i * 7) % 18, cx = X(hs.x + hs.w / 2), cz = Z(hs.y + hs.h / 2), horiz = hs.w >= hs.h;
+    [-1, 1].forEach((s, k) => {
+      if (horiz){ o.position.set(cx + s * hs.w * .2, h * .5, cz + (hs.h - 4) / 2 + .4); o.scale.set(7, 7, .6); }
+      else { o.position.set(cx + (hs.w - 4) / 2 + .4, h * .5, cz + s * hs.h * .2); o.scale.set(.6, 7, 7); }
+      o.updateMatrix(); houseWins.setMatrixAt(i * 2 + k, o.matrix);
+    });
+  });
+  scene.add(houseWins); }
+// stars
+const starGeo = new THREE.BufferGeometry(), sp = [];
+for (let i = 0; i < 700; i++){ const a = Math.random() * Math.PI * 2, e = .08 + Math.random() * 1.2, r = 4200; sp.push(Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r); }
+starGeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false });
+const stars = new THREE.Points(starGeo, starMat); scene.add(stars);
+
+function applyDaylight(day){
+  if (Math.abs(day - lastDay) < .004) return;
+  lastDay = day;
+  const night = 1 - day, dusk = 4 * day * (1 - day);
+  scene.background.copy(NIGHT_SKY).lerp(daySky, day).lerp(DUSK, dusk * .35);
+  if (scene.fog) scene.fog.color.copy(scene.background);
+  hemi.intensity = .28 + .82 * day;
+  hemi.color.copy(new THREE.Color(0x4a5a8a)).lerp(dayHemi, day);
+  hemi.groundColor.copy(new THREE.Color(0x1c2233)).lerp(dayHemiGround, day);
+  sun.intensity = .45 + 1.75 * day;                         // moonlight at night
+  sun.color.copy(MOON).lerp(SUNC, day).lerp(DUSK, dusk * .4);
+  renderer.toneMappingExposure = .82 + .23 * day;
+  const lit = Math.max(0, Math.min(1, (night - .25) / .5));   // lights switch on around dusk
+  glass.emissive = glass.emissive || new THREE.Color(); glass.emissive.setHex(0xffc56e); glass.emissiveIntensity = .85 * lit;
+  winMat.opacity = .95 * lit; houseWins.visible = lit > .01;
+  poolMat.opacity = .55 * lit; haloMat.opacity = .9 * lit; pools.visible = lit > .01; halos.forEach(h => { h.visible = lit > .01; });
+  lampHeads.material.color.setHex(lit > .01 ? 0xffe6a8 : 0xd9dde2);
+  starMat.opacity = Math.max(0, night - .35) / .65;
+  if (traffic) traffic.setNight(lit);
+  dirty = true;
+}
+
 /* ---------------- palette switching (snow) ---------------- */
 let snowy = null;
 function applyPalette(){
@@ -339,9 +407,9 @@ function applyPalette(){
   snowy = s;
   const P = s ? PAL.snowy : PAL.summer;
   ['ground', 'block', 'park', 'side', 'bank', 'water'].forEach(k => mats[k] && mats[k].color.setHex(P[k]));
-  scene.background = new THREE.Color(P.sky);
+  daySky.setHex(P.sky); dayHemi.setHex(P.hemiSky); dayHemiGround.setHex(P.hemiGround);
   scene.fog = new THREE.Fog(P.sky, 1600, 4200);
-  hemi.color.setHex(P.hemiSky); hemi.groundColor.setHex(P.hemiGround);
+  lastDay = -1;                          // re-apply lighting with the new palette
   trees.forEach((t, i) => { const c = GREENS[i % GREENS.length].clone(); if (s) c.lerp(SNOW, .55); leaves.setColorAt(i, c); });
   M.houses.forEach((h, i) => { const c = ROOFS[i % ROOFS.length].clone(); if (s) c.lerp(SNOW, .8); roofs.setColorAt(i, c); });
   leaves.instanceColor.needsUpdate = roofs.instanceColor.needsUpdate = true;
@@ -431,9 +499,11 @@ const traffic = M.reduceMotion ? null : createTraffic(scene, M, { X, Z, mobile }
 // first-visit parachute intro; when it ends the camera pulls back to the overview
 const intro = createIntro({ THREE, scene, camera, controls, rig, M, X, Z, mobile, holiday: FX.holiday, enabled: mode === '3d',
   onEnd(){ if (!M.rider().riding){ follow = false; flyTo(OVERVIEW.target, OVERVIEW.offset, 1500); } } });
+let dayCheck = 0;
 function frame(dt, now){
   if (mode !== '3d') return;
   applyPalette();
+  if (now - dayCheck > 1000 || lastDay < 0){ dayCheck = now; applyDaylight(window.PortfolioSun ? PortfolioSun.daylight() : 1); }
   const r = M.rider();
   // rider pose
   // swerve left around cars ahead, then tuck back into the lane
@@ -482,8 +552,9 @@ function frame(dt, now){
     bulbsA[0].material.opacity = .35 + .65 * s; bulbsB[0].material.opacity = .35 + .65 * (1 - s); dirty = true;
   }
   if (traffic){ traffic.update(dt, r.riding ? r : { x: r.x, y: r.y }); dirty = true; }   // the town is always moving now
-  if (dirty){ dirty = false; renderer.render(scene, camera); }
+  if (dirty){ dirty = false; renderer.render(scene, camera); if (booting){ booting = false; document.documentElement.classList.remove('boot-3d'); } }
 }
+let booting = document.documentElement.classList.contains('boot-3d');
 M.onFrame(frame);
 renderer.shadowMap.needsUpdate = true;
 
@@ -501,6 +572,7 @@ function setMode(m){
   viewBtn.setAttribute('aria-label', m === '3d' ? 'Switch to the 2D map' : 'Switch to the 3D view');
   try { localStorage.setItem('portfolio-view', m); } catch (e) {}
   dirty = true;
+  if (m === '2d') document.documentElement.classList.remove('boot-3d');
 }
 viewBtn.addEventListener('click', () => { if (intro.active) intro.skip(); setMode(mode === '3d' ? '2d' : '3d'); });
 setMode(mode);

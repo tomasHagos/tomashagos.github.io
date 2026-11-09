@@ -179,3 +179,10 @@ body.view-3d #map{visibility:hidden}
   #tourBtn{position:fixed;right:10px;bottom:calc(64px + env(safe-area-inset-bottom));box-shadow:3px 3px 0 var(--ink);padding:9px 16px;font-size:14px;max-width:calc(100vw - 20px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   body:has(.intro:not(.hide)) #tourBtn, body:has(.intro-skip) #tourBtn{display:none}
 }
+
+/* ---------- boot: hide the 2D map until the first 3D frame (sun.js adds html.boot-3d) ---------- */
+html.boot-3d body{background:#a9d4f0}
+html.boot-3d.boot-night body{background:#0b1426}
+html.boot-3d #map, html.boot-3d #wx{visibility:hidden}
+html.boot-3d body::after{content:"Loading the town…";position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);font:600 14px var(--font);color:var(--ink);background:var(--paper);border:2px solid var(--ink);border-radius:999px;padding:8px 16px;box-shadow:3px 3px 0 var(--ink);z-index:0;animation:bootfade .6s ease-out .6s both}
+@keyframes bootfade{from{opacity:0}to{opacity:1}}
