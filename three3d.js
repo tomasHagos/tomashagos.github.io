@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.min.js';
 import { createTraffic } from './traffic3d.js';
 import { createIntro } from './intro3d.js';
+import { createAirport, AIRPORT } from './airport3d.js';
 
 const M = window.PortfolioMap;
 if (!M) throw new Error('three3d.js needs app.js');
@@ -118,7 +119,8 @@ XS.forEach(x => { flat(CURB * 2, y1 - y0 + CURB * 2, side, X(x), Z((y0 + y1) / 2
 YS.forEach(y => { const xr = M.riverX(y), half = M.riverW(y) + 26; [-1, 1].forEach(s => box(half * 2, 10, 4, solid(0x8a7f6e), X(xr), 8, Z(y) + s * (CURB - 2))); });
 
 /* ---------------- trees (instanced) ---------------- */
-const trees = M.trees.filter(t => t.g.isConnected);   // effects.js clears some for the Christmas tree
+const inAirport = t => t.x > AIRPORT.x0 - 10 && t.x < AIRPORT.x1 + 10 && t.y > AIRPORT.y0 - 10 && t.y < AIRPORT.y1 + 10;
+const trees = M.trees.filter(t => t.g.isConnected && !inAirport(t));   // effects.js clears some for the Christmas tree; the airport needs open land
 const GREENS = [0x3f7a35, 0x4f8a3c, 0x5c9a45, 0x2f6b33, 0x6aa64e].map(c => new THREE.Color(c));
 const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(2.2, 3, 1, 6), solid(0x6b4f3a), trees.length);
 const leaves = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ roughness: .85, flatShading: true }), trees.length);
@@ -396,6 +398,7 @@ function applyDaylight(day){
   lampHeads.material.color.setHex(lit > .01 ? 0xffe6a8 : 0xd9dde2);
   starMat.opacity = Math.max(0, night - .35) / .65;
   if (traffic) traffic.setNight(lit);
+  airport.setNight(lit);
   dirty = true;
 }
 
@@ -496,6 +499,7 @@ renderer.domElement.addEventListener('pointerup', e => {
 const tmp = new THREE.Vector3();
 let lastRide = '', lastTwinkle = 0, lastPose = '', weave = 0, lean = 0;
 const traffic = M.reduceMotion ? null : createTraffic(scene, M, { X, Z, mobile });
+const airport = createAirport(scene, { X, Z, mat, solid, moving: !M.reduceMotion });
 // first-visit parachute intro; when it ends the camera pulls back to the overview
 const intro = createIntro({ THREE, scene, camera, controls, rig, M, X, Z, mobile, holiday: FX.holiday, enabled: mode === '3d',
   onEnd(){ if (!M.rider().riding){ follow = false; flyTo(OVERVIEW.target, OVERVIEW.offset, 1500); } } });
@@ -551,7 +555,8 @@ function frame(dt, now){
     lastTwinkle = now; const s = .5 + .5 * Math.sin(now / 450);
     bulbsA[0].material.opacity = .35 + .65 * s; bulbsB[0].material.opacity = .35 + .65 * (1 - s); dirty = true;
   }
-  if (traffic){ traffic.update(dt, r.riding ? r : { x: r.x, y: r.y }); dirty = true; }   // the town is always moving now
+  if (traffic){ traffic.update(dt, r.riding ? r : { x: r.x, y: r.y }); dirty = true; }
+  airport.update(dt);   // the town is always moving now
   if (dirty){ dirty = false; renderer.render(scene, camera); if (booting){ booting = false; document.documentElement.classList.remove('boot-3d'); } }
 }
 let booting = document.documentElement.classList.contains('boot-3d');
@@ -576,4 +581,4 @@ function setMode(m){
 }
 viewBtn.addEventListener('click', () => { if (intro.active) intro.skip(); setMode(mode === '3d' ? '2d' : '3d'); });
 setMode(mode);
-window.Portfolio3D = { renderer, scene, camera, controls, setMode, traffic, get mode(){ return mode; }, get weave(){ return weave; } };
+window.Portfolio3D = { renderer, scene, camera, controls, setMode, traffic, airport, get mode(){ return mode; }, get weave(){ return weave; } };
