@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { createTraffic } from './traffic3d.js';
+import { createIntro } from './intro3d.js';
 
 const M = window.PortfolioMap;
 if (!M) throw new Error('three3d.js needs app.js');
@@ -427,6 +428,9 @@ renderer.domElement.addEventListener('pointerup', e => {
 const tmp = new THREE.Vector3();
 let lastRide = '', lastTwinkle = 0, lastPose = '', weave = 0, lean = 0;
 const traffic = M.reduceMotion ? null : createTraffic(scene, M, { X, Z, mobile });
+// first-visit parachute intro; when it ends the camera pulls back to the overview
+const intro = createIntro({ THREE, scene, camera, controls, rig, M, X, Z, mobile, holiday: FX.holiday, enabled: mode === '3d',
+  onEnd(){ if (!M.rider().riding){ follow = false; flyTo(OVERVIEW.target, OVERVIEW.offset, 1500); } } });
 function frame(dt, now){
   if (mode !== '3d') return;
   applyPalette();
@@ -453,7 +457,10 @@ function frame(dt, now){
   // a new ride, or arriving somewhere, puts the camera back in follow mode
   const key = r.rideId + '|' + r.stop;
   if (key !== lastRide && (r.riding || r.stop)){ if (lastRide !== '') follow = true; lastRide = key; }
-  if (tween){
+  if (intro.active){
+    intro.update(dt, now);                 // the intro drives the camera until it ends
+    dirty = true;
+  } else if (tween){
     const k = Math.min(1, (now - tween.t0) / tween.ms), e = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
     controls.target.lerpVectors(tween.fromT, tween.toT, e);
     camera.position.lerpVectors(tween.fromP, tween.toP, e);
@@ -467,7 +474,7 @@ function frame(dt, now){
     camera.position.lerp(p.pos, kp);
     if (before.distanceToSquared(camera.position) > 1e-4) dirty = true;
   }
-  controls.update();
+  if (!intro.active) controls.update();
   updateViewOffset();
   // Christmas bulbs blink in two groups, ~8 times a second at most
   if (bulbsA.length && now - lastTwinkle > 120){
@@ -495,6 +502,6 @@ function setMode(m){
   try { localStorage.setItem('portfolio-view', m); } catch (e) {}
   dirty = true;
 }
-viewBtn.addEventListener('click', () => setMode(mode === '3d' ? '2d' : '3d'));
+viewBtn.addEventListener('click', () => { if (intro.active) intro.skip(); setMode(mode === '3d' ? '2d' : '3d'); });
 setMode(mode);
 window.Portfolio3D = { renderer, scene, camera, controls, setMode, traffic, get mode(){ return mode; }, get weave(){ return weave; } };
