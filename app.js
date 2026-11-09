@@ -544,30 +544,86 @@ function camTarget(){
   if (cam.mode === 'overview') return { x: W / 2 + cam.manual.x, y: H / 2 + cam.manual.y, scale: overviewScale() * cam.zoomMul };
   return { x: R.x + cam.manual.x, y: R.y + cam.manual.y, scale: followScale() };
 }
-function applyCam(){
+// Screen point (px) that the camera centre is drawn at, after side panels.
+function camCentrePx(){
   const sw = innerWidth, sh = innerHeight, ins = cam.mode === 'overview' ? (isMobile() ? { r: 0, b: 56, l: 0, t: 120 } : { r: 0, b: 0, l: 250, t: 0 }) : insets();
+  return { x: ins.l + (sw - ins.l - ins.r) / 2, y: ins.t + (sh - ins.b - ins.t) / 2 };
+}
+function applyCam(){
+  const sw = innerWidth, sh = innerHeight;
   const vw = sw / cam.scale, vh = sh / cam.scale;
-  const cxPx = ins.l + (sw - ins.l - ins.r) / 2, cyPx = ins.t + (sh - ins.b - ins.t) / 2;
+  const { x: cxPx, y: cyPx } = camCentrePx();
   svg.setAttribute('viewBox', `${(cam.x - cxPx / cam.scale).toFixed(2)} ${(cam.y - cyPx / cam.scale).toFixed(2)} ${vw.toFixed(2)} ${vh.toFixed(2)}`);
 }
 
-/* drag + wheel */
-let drag = null, dragMoved = false;
-svg.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, mx: cam.manual.x, my: cam.manual.y, id: e.pointerId }; dragMoved = false; });
+/* drag, pinch + wheel
+   One finger / mouse drags the map. Two fingers pinch-zoom around the point
+   between them and pan as they move. Lifting one finger hands control back
+   to the other without a jump. */
+const ZOOM_MIN = 0.75, ZOOM_MAX = 1.9;
+const clampZoom = z => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+const pointers = new Map();            // pointerId -> {x, y}
+let drag = null, dragMoved = false, pinch = null;
+const screenToWorld = (px, py) => {
+  const c = camCentrePx();
+  return { x: cam.x + (px - c.x) / cam.scale, y: cam.y + (py - c.y) / cam.scale };
+};
+function startDrag(id, p){ drag = { x: p.x, y: p.y, mx: cam.manual.x, my: cam.manual.y, id }; }
+function startPinch(){
+  const [a, b] = [...pointers.values()];
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  pinch = { d: Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)), zoom: cam.zoomMul, anchor: screenToWorld(mid.x, mid.y) };
+  drag = null; dragMoved = true;        // a pinch is never a click
+  svg.classList.add('dragging');
+  pointers.forEach((_, id) => { try { svg.setPointerCapture(id); } catch (er) {} });
+}
+function movePinch(){
+  const [a, b] = [...pointers.values()];
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  cam.zoomMul = clampZoom(pinch.zoom * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d);
+  cam.scale = camTarget().scale;        // apply zoom immediately, no easing
+  // keep the world point that started under the fingers under them now
+  const c = camCentrePx();
+  const base = camTarget();
+  const camX = pinch.anchor.x - (mid.x - c.x) / cam.scale, camY = pinch.anchor.y - (mid.y - c.y) / cam.scale;
+  cam.manual.x += camX - base.x; cam.manual.y += camY - base.y;
+  clampManual();
+  const t = camTarget(); cam.x = t.x; cam.y = t.y;
+}
+svg.addEventListener('pointerdown', e => {
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1){ startDrag(e.pointerId, { x: e.clientX, y: e.clientY }); dragMoved = false; }
+  else if (pointers.size === 2) startPinch();
+});
 svg.addEventListener('pointermove', e => {
-  if (!drag) return;
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch && pointers.size >= 2){ movePinch(); return; }
+  if (!drag || drag.id !== e.pointerId) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-  if (!dragMoved && Math.hypot(dx, dy) > 6){ dragMoved = true; svg.classList.add('dragging'); try { svg.setPointerCapture(drag.id); } catch (er) {} }
+  if (!dragMoved && Math.hypot(dx, dy) > 6){ dragMoved = true; svg.classList.add('dragging'); try { svg.setPointerCapture(e.pointerId); } catch (er) {} }
   if (dragMoved){ cam.manual.x = drag.mx - dx / cam.scale; cam.manual.y = drag.my - dy / cam.scale; clampManual(); cam.x = camTarget().x; cam.y = camTarget().y; }
 });
-const endDrag = () => { drag = null; svg.classList.remove('dragging'); };
-svg.addEventListener('pointerup', endDrag); svg.addEventListener('pointercancel', endDrag);
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if (pointers.size >= 2){ startPinch(); return; }
+  pinch = null;
+  if (pointers.size === 1){            // one finger still down: keep dragging from here
+    const [id, p] = [...pointers.entries()][0];
+    startDrag(id, p);
+    return;
+  }
+  drag = null; svg.classList.remove('dragging');
+}
+svg.addEventListener('pointerup', endPointer); svg.addEventListener('pointercancel', endPointer);
 svg.addEventListener('click', e => {
   if (dragMoved){ dragMoved = false; return; }
   const hit = e.target.closest('[data-stop]');
   if (hit) goTo(hit.getAttribute('data-stop'));
 });
-svg.addEventListener('wheel', e => { e.preventDefault(); cam.zoomMul = Math.min(1.9, Math.max(0.75, cam.zoomMul * Math.exp(-e.deltaY * 0.0015))); }, { passive: false });
+svg.addEventListener('wheel', e => { e.preventDefault(); cam.zoomMul = clampZoom(cam.zoomMul * Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+// iOS Safari: stop its own page-zoom gesture from fighting ours.
+['gesturestart', 'gesturechange', 'gestureend'].forEach(t => svg.addEventListener(t, e => e.preventDefault(), { passive: false }));
 
 /* ---------------- loop ---------------- */
 const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -601,7 +657,7 @@ function frame(now){
   placeRider(R.x, R.y, R.ang, steer);
   // camera
   const tg = camTarget(), k = reduceMotion ? 1 : 1 - Math.exp(-dt * (ride ? 5 : 3.2));
-  if (!(drag && dragMoved)){ cam.x += (tg.x - cam.x) * k; cam.y += (tg.y - cam.y) * k; }
+  if (!(drag && dragMoved) && !pinch){ cam.x += (tg.x - cam.x) * k; cam.y += (tg.y - cam.y) * k; }
   cam.scale += (tg.scale - cam.scale) * k;
   applyCam();
   clouds.forEach(c => { c.x += c.v * dt; if (c.x - c.rx > W + 200) c.x = -c.rx - 200; c.el.setAttribute('cx', c.x.toFixed(1)); });
