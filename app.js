@@ -780,6 +780,22 @@ window.PortfolioMap = {
   riderBody: body,
   onFrame: fn => frameHooks.push(fn),
   reduceMotion,
+  // used by the 3D view (three3d.js)
+  goTo,
+  rider: () => ({ x: R.x, y: R.y, ang: R.ang, phase: R.phase, riding: !!ride, stop: ride ? ride.target.id : R.at, rideId: ride ? ride.t0 : 0 }),
+  routePoints(step = 24){
+    if (!ride) return null;
+    const pts = [];
+    for (let d = 0; d <= ride.len; d += step){ const p = routeLine.getPointAtLength(d); pts.push({ x: p.x, y: p.y }); }
+    return pts;
+  },
+  panelInset(){
+    const p = document.getElementById('panel');
+    if (!p.classList.contains('open')) return { r: 0, b: 0 };
+    return isMobile() ? { r: 0, b: p.offsetHeight } : { r: p.offsetWidth + 36, b: 0 };
+  },
+  isMobile,
+  pitch: { x: 1254, y: 706, w: 128, h: 84 },
 };
 
 cam.scale = overviewScale();
