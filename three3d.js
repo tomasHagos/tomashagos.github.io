@@ -10,6 +10,7 @@
  */
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
+import { createTraffic } from './traffic3d.js';
 
 const M = window.PortfolioMap;
 if (!M) throw new Error('three3d.js needs app.js');
@@ -268,10 +269,13 @@ const legs = [-1, 1].map(s => {
   const leg = new THREE.Mesh(new THREE.CapsuleGeometry(2.7, 13, 4, 8), solid(0x26324a)); leg.position.y = -8; hip.add(leg);
   bike.add(hip); return hip;
 });
-bike.traverse(m => { if (m.isMesh) m.castShadow = true; });
+// no cast shadow: shadows are drawn once for the static town; the rider gets a blob instead
+const riderBlob = new THREE.Mesh(new THREE.CircleGeometry(7, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .25, depthWrite: false }));
+riderBlob.rotation.x = -Math.PI / 2; riderBlob.position.y = .4;
 const RIDER_SCALE = .34;                                  // ~16 units tall vs houses at 26–44
 bike.scale.setScalar(RIDER_SCALE);
-scene.add(bike);
+const rig = new THREE.Group();             // position + heading; the bike inside leans into swerves
+rig.add(bike, riderBlob); riderBlob.position.y = .3; scene.add(rig);
 // a soft ring under the rider so you can spot him from far away
 const ring = new THREE.Mesh(new THREE.RingGeometry(9, 13, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: .85, depthWrite: false }));
 ring.rotation.x = -Math.PI / 2; scene.add(ring);
@@ -421,15 +425,26 @@ renderer.domElement.addEventListener('pointerup', e => {
 
 /* ---------------- per-frame sync ---------------- */
 const tmp = new THREE.Vector3();
-let lastRide = '', lastTwinkle = 0, lastPose = '';
+let lastRide = '', lastTwinkle = 0, lastPose = '', weave = 0, lean = 0;
+const traffic = M.reduceMotion ? null : createTraffic(scene, M, { X, Z, mobile });
 function frame(dt, now){
   if (mode !== '3d') return;
   applyPalette();
   const r = M.rider();
   // rider pose
-  bike.position.set(X(r.x), 3.2, Z(r.y));
-  bike.rotation.y = -r.ang * Math.PI / 180;
-  ring.position.set(X(r.x), 3.8, Z(r.y));
+  // swerve left around cars ahead, then tuck back into the lane
+  const a = r.ang * Math.PI / 180;
+  const wantWeave = traffic ? traffic.weaveFor(r) : 0;
+  const prevWeave = weave;
+  weave += (wantWeave - weave) * (1 - Math.exp(-dt * 11));
+  const lx = Math.sin(a), ly = -Math.cos(a);                  // left of travel, in map units
+  const wx = r.x + lx * weave, wy = r.y + ly * weave;
+  rig.position.set(X(wx), 3.2, Z(wy));
+  const swerve = dt ? (weave - prevWeave) / dt : 0;           // sideways speed
+  rig.rotation.y = -a + Math.max(-.35, Math.min(.35, swerve * .004));
+  lean += (Math.max(-.45, Math.min(.45, -swerve * .006)) - lean) * (1 - Math.exp(-dt * 10));
+  bike.rotation.x = lean;
+  ring.position.set(X(wx), 3.8, Z(wy));
   wheels.forEach(w => { w.rotation.z = -r.phase * .9; });
   legs.forEach((hip, i) => { hip.rotation.z = Math.sin(r.phase + i * Math.PI) * .7; });
   const pose = `${r.x.toFixed(1)},${r.y.toFixed(1)},${r.ang.toFixed(1)}`;
@@ -459,6 +474,7 @@ function frame(dt, now){
     lastTwinkle = now; const s = .5 + .5 * Math.sin(now / 450);
     bulbsA[0].material.opacity = .35 + .65 * s; bulbsB[0].material.opacity = .35 + .65 * (1 - s); dirty = true;
   }
+  if (traffic){ traffic.update(dt, r.riding ? r : { x: r.x, y: r.y }); dirty = true; }   // the town is always moving now
   if (dirty){ dirty = false; renderer.render(scene, camera); }
 }
 M.onFrame(frame);
@@ -481,4 +497,4 @@ function setMode(m){
 }
 viewBtn.addEventListener('click', () => setMode(mode === '3d' ? '2d' : '3d'));
 setMode(mode);
-window.Portfolio3D = { renderer, scene, camera, controls, setMode, get mode(){ return mode; } };
+window.Portfolio3D = { renderer, scene, camera, controls, setMode, traffic, get mode(){ return mode; }, get weave(){ return weave; } };
