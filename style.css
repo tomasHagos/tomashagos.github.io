@@ -151,3 +151,10 @@ svg.snowy .ripple{display:none}
 .rip-b{animation:ripple 1.6s ease-in-out -.8s infinite}
 @keyframes ripple{0%,100%{opacity:.9}50%{opacity:.1}}
 @media (prefers-reduced-motion: reduce){ .rip-a,.rip-b{animation:none;opacity:.6} }
+
+/* ---------- 3D view (three3d.js) ---------- */
+#scene3d{position:fixed;inset:0;width:100%;height:100%;display:none;touch-action:none;cursor:grab;outline:none}
+#scene3d:active{cursor:grabbing}
+body.view-3d #scene3d{display:block}
+body.view-3d #map{visibility:hidden}
+.ctl-row{display:flex;gap:8px}

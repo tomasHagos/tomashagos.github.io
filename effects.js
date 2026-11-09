@@ -378,6 +378,8 @@ const DECORATE = {
   },
 };
 if (holiday && DECORATE[holiday.id]) DECORATE[holiday.id]();
+// read by the 3D view
+window.PortfolioEffects = { holiday: holiday ? holiday.id : null, get weather(){ return kind; } };
 
 /* ---------------- go ---------------- */
 const forced = params.get('weather');
