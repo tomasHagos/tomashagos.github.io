@@ -1,0 +1,71 @@
+# Publishes two copies of the site with GitHub Pages:
+#   main    -> https://tomashagos.github.io/          (live)
+#   staging -> https://tomashagos.github.io/staging/  (test copy, hidden from search engines)
+#
+# Runs when main changes, when the "Staging updated" workflow finishes (that one
+# fires on every push to the staging branch), or by hand from the Actions tab.
+# Staging deploys are routed through main this way because the github-pages
+# environment only accepts deployments from the default branch.
+name: Deploy site (live + staging)
+
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: ["Staging updated"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out live site (main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: live
+
+      - name: Check out staging branch
+        id: staging
+        uses: actions/checkout@v4
+        continue-on-error: true   # fine if there's no staging branch yet
+        with:
+          ref: staging
+          path: staging
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          tar -C live --exclude=.git --exclude=.github -cf - . | tar -C _site -xf -
+          if [ -f staging/index.html ]; then
+            mkdir -p _site/staging
+            tar -C staging --exclude=.git --exclude=.github --exclude=CNAME -cf - . | tar -C _site/staging -xf -
+            # keep the test copy out of search results
+            find _site/staging -name '*.html' -exec sed -i 's#<head>#<head>\n<meta name="robots" content="noindex">#' {} +
+            # red "STAGING" tag so it's obvious which copy you're looking at
+            sed -i 's#</body>#<div style="position:fixed;top:0;left:0;right:0;height:4px;background:\#d62828;z-index:99;pointer-events:none"></div><div style="position:fixed;top:4px;left:50%;transform:translateX(-50%);background:\#d62828;color:\#fff;font:700 11px/1 system-ui,sans-serif;letter-spacing:.08em;padding:4px 10px;border-radius:0 0 8px 8px;z-index:99;pointer-events:none">STAGING</div>\n</body>#' _site/staging/index.html
+            echo "Included staging @ $(git -C staging rev-parse --short HEAD)"
+          else
+            echo "No staging branch found; deploying live site only"
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

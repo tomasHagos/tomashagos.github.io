@@ -1,0 +1,14 @@
+# Fires on every push to the staging branch. When it finishes, the
+# "Deploy site (live + staging)" workflow on main rebuilds and publishes
+# https://tomashagos.github.io/staging/ with the new staging code.
+name: Staging updated
+
+on:
+  push:
+    branches: [staging]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "staging is at ${GITHUB_SHA::7}; the Pages workflow on main will redeploy /staging/"
