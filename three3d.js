@@ -9,7 +9,7 @@
  *   Phones/browsers without WebGL fall back to 2D automatically.
  */
 import * as THREE from 'three';
-import { MapControls } from 'three/addons/controls/MapControls.js';
+import { MapControls } from 'three/addons/controls/MapControls.min.js';
 import { createTraffic } from './traffic3d.js';
 import { createIntro } from './intro3d.js';
 
