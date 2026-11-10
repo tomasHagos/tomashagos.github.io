@@ -17,3 +17,10 @@ Also vendored (same build steps):
 esbuild examples/jsm/objects/Sky.js --format=esm --minify --legal-comments=eof --outfile=addons/objects/Sky.min.js
 esbuild examples/jsm/utils/BufferGeometryUtils.js --format=esm --minify --legal-comments=eof --outfile=addons/utils/BufferGeometryUtils.min.js
 ```
+
+Post-processing (night glow), bundled into one file and loaded only after the town is on screen:
+
+```sh
+# entry re-exports EffectComposer, RenderPass, UnrealBloomPass, OutputPass from examples/jsm/postprocessing
+esbuild pp-entry.js --bundle --external:three --format=esm --minify --legal-comments=eof --outfile=addons/postprocessing/bloom.min.js
+```

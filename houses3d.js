@@ -67,6 +67,7 @@ export function createHouses(scene, M, { X, Z, TEX, CURB }){
 
   const blockOf = (v, arr) => { for (let i = 0; i < arr.length - 1; i++) if (v >= arr[i] && v <= arr[i + 1]) return i; return -1; };
   const houseM = new THREE.Matrix4();
+  const lots = [];                          // per-house frame + sizes, for the detail pass
   M.houses.forEach((hs, i) => {
     const cx = hs.x + hs.w / 2, cy = hs.y + hs.h / 2;
     const bi = blockOf(cx, XS), bj = blockOf(cy, YS);
@@ -125,6 +126,7 @@ export function createHouses(scene, M, { X, Z, TEX, CURB }){
     }
     // path from the step to the sidewalk (block edge)
     const toEdge = d[side] - CURB - deep / 2 - 6.4;
+    lots.push({ m: houseM.clone(), Wd, Dp, F, wallH, garage, porch, doorX, front, toEdge, i });
     if (toEdge > 2){ const g = new THREE.BoxGeometry(5, .5, toEdge); g.translate(0, .25, 0); worldUV(g, i * 3.1, 0); L.makeTranslation(doorX, .5, front + 6.4 + toEdge / 2); put('concrete', g, T.multiplyMatrices(houseM, L)); }
   });
 
@@ -162,7 +164,7 @@ export function createHouses(scene, M, { X, Z, TEX, CURB }){
 
   const roofMap = MATS.roof.map, snowMap = TEX.snow.map.clone(); snowMap.repeat.set(1 / 30, 1 / 30); snowMap.needsUpdate = true;
   return {
-    meshes, glass,
+    meshes, glass, lots, mats: MATS,
     setSnow(on){
       MATS.roof.map = on ? snowMap : roofMap;
       MATS.roof.vertexColors = !on;

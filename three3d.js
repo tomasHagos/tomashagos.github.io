@@ -85,7 +85,8 @@ let ENV = null;
 { const pmrem = new THREE.PMREMGenerator(renderer), envScene = new THREE.Scene(); envScene.add(sky.clone());
   ENV = pmrem.fromScene(envScene, .02).texture; pmrem.dispose(); }
 const shiny = [];
-const reflect = m => { m.envMap = ENV; m.envMapIntensity = .9; shiny.push(m); return m; };
+let envNow = .9;                                        // follows day/night (applyDaylight)
+const reflect = m => { m.envMap = ENV; m.envMapIntensity = envNow; shiny.push(m); return m; };
 
 /* ---------------- surface textures ---------------- */
 const TEX = makeTextures(mobile);
@@ -196,10 +197,11 @@ function cap(r, y, color){ const m = box(r.w + 4, 4, r.h + 4, solid(color), cent
 const lobbyGlass = reflect(new THREE.MeshStandardMaterial({ color: 0x2c3e48, roughness: .04, metalness: .7 }));
 const facadeMats = {};
 const facade = c => facadeMats[c] ||= texturedMaterial(TEX.concrete, { color: c, roughness: .75 });
+const TOWERS = [];                                       // read by detail3d.js (window grids, parapets)
 function tower(r, h, wall, roof, windows = true){
   const { cx, cz } = centre(r);
   box(r.w, h, r.h, facade(wall), cx, h / 2, cz);
-  cap(r, h, roof);
+  const T = { r, h, wall, windows, cap: cap(r, h, roof), bands: [] }; TOWERS.push(T);
   if (!windows) return;
   // glass lobby at street level, with an entrance canopy on the south side
   box(r.w + .6, 10, r.h * .9, lobbyGlass, cx, 5.5, cz, false);
@@ -207,8 +209,7 @@ function tower(r, h, wall, roof, windows = true){
   box(Math.min(40, r.w * .4), 2, 12, solid(0x2f3338), cx, 12, cz + r.h / 2 + 6);
   // window bands
   for (let y = 22; y < h - 8; y += 18){
-    box(r.w + .8, 8, r.h * .9, glass, cx, y, cz, false);
-    box(r.w * .9, 8, r.h + .8, glass, cx, y, cz, false);
+    T.bands.push(box(r.w + .8, 8, r.h * .9, glass, cx, y, cz, false), box(r.w * .9, 8, r.h + .8, glass, cx, y, cz, false));
   }
   // vertical frames (mullions) across every face
   const fins = [], STEP = 13;
@@ -272,10 +273,18 @@ let homeGlass = null;
   box(24, 1.4, 12, trimM, cx, 25, cz + r.h / 2 + 6);                                        // porch roof
   [-10, 10].forEach(o => box(1.6, 22, 1.6, trimM, cx + o, 13, cz + r.h / 2 + 11));
   box(26, 2.4, 13, facade(0xa9a59c), cx, 1.2, cz + r.h / 2 + 6.5);
+  // gable ends: close the wall up to the underside of the roof on both sides
+  { const rise = r.h * .45, over = 5, d = r.h, edge = -1.4 + (rise - .6) * over / (d / 2 + over) - .1;
+    const sh = new THREE.Shape(); sh.moveTo(-d / 2, -.5); sh.lineTo(-d / 2, edge); sh.lineTo(0, rise - 2.1); sh.lineTo(d / 2, edge); sh.lineTo(d / 2, -.5); sh.closePath();
+    const g = new THREE.ExtrudeGeometry(sh, { depth: r.w, bevelEnabled: false }); g.translate(0, 0, -r.w / 2); g.rotateY(Math.PI / 2);
+    worldUV(g, cx, cz);
+    const m = new THREE.Mesh(g, homeWall); m.position.set(cx, 50, cz); m.castShadow = m.receiveShadow = true; scene.add(m);
+    [1, -1].forEach(sx => { box(1.2, 12, 9, trimM, cx + sx * (r.w / 2 + .3), 50 + rise * .42, cz, false); box(1.4, 10, 7, hGlass, cx + sx * (r.w / 2 + .4), 50 + rise * .42, cz, false); });   // attic windows
+  }
   homeRoof.position.set(cx, 50, cz); homeRoof.castShadow = homeRoof.receiveShadow = true; scene.add(homeRoof);
   box(14, 30, 14, solid(0x6b4f43), cx - 40, 85, cz - 20); TOP.about = 50 + r.h * .6; }
 { const r = LM.projects, { cx, cz } = centre(r);
-  box(r.w, 46, r.h, solid(0xf4a261), cx, 23, cz); cap(r, 46, 0xd9874a);
+  box(r.w, 46, r.h, solid(0xf4a261), cx, 23, cz); TOWERS.push({ r, h: 46, wall: 0xf4a261, windows: false, cap: cap(r, 46, 0xd9874a), bands: [] });
   for (let k = 0; k < 3; k++) box(36, 30, 2, glass, X(r.x + 44 + k * 56), 20, Z(r.y + r.h) + 1, false);
   TOP.projects = 50; }
 const tents = [];
@@ -444,6 +453,8 @@ const daySky = new THREE.Color(0xa9d4f0), dayHemi = new THREE.Color(0xdff2ff), d
 const NIGHT_SKY = new THREE.Color(0x0b1426), DUSK = new THREE.Color(0xf0926a), MOON = new THREE.Color(0x9db4ff), SUNC = new THREE.Color(0xfff1dc);
 scene.background = new THREE.Color(); 
 let lastDay = -1;
+// Second-pass detail (detail3d.js, loaded after the town is on screen) plugs in here.
+const HOOKS = { night: [], snow: [], update: [], render: null };
 // street lamps on every corner of every intersection
 const LAMP_SPOTS = [];
 XS.forEach(x => YS.forEach(y => [[-1, -1], [1, 1]].forEach(([sx, sy]) => LAMP_SPOTS.push([X(x + sx * 38), Z(y + sy * 38)]))));
@@ -489,7 +500,7 @@ function applyDaylight(day){
   hemi.intensity = mix(.9, 1.25);                           // sky fill light (replaces sky reflections on plain surfaces)
   hemi.color.copy(new THREE.Color(0x4a5a8a)).lerp(dayHemi, day);
   hemi.groundColor.copy(new THREE.Color(0x1c2233)).lerp(dayHemiGround, day);
-  shiny.forEach(m => { m.envMapIntensity = mix(.08, .9); });
+  envNow = mix(.08, .9); shiny.forEach(m => { m.envMapIntensity = envNow; });
   const lit = Math.max(0, Math.min(1, (night - .25) / .5));   // lights switch on around dusk
   glass.emissiveIntensity = .85 * lit;
   houses.setNight(lit);
@@ -499,6 +510,7 @@ function applyDaylight(day){
   starMat.opacity = Math.max(0, night - .35) / .65;
   if (traffic) traffic.setNight(lit);
   airport.setNight(lit);
+  HOOKS.night.forEach(f => f(lit, day));
   dirty = true;
 }
 
@@ -520,6 +532,7 @@ function applyPalette(){
   roofCaps.forEach(m => m.material.color.set(s ? new THREE.Color(m.userData.base).lerp(SNOW, .85) : m.userData.base));
   tents.forEach(t => t.material.color.set(s ? new THREE.Color(t.userData.base).lerp(SNOW, .45) : t.userData.base));
   homeRoof.material.color.set(s ? new THREE.Color(0xf4f7fa) : 0xe08a6a);
+  HOOKS.snow.forEach(f => f(s));
   renderer.shadowMap.needsUpdate = true; dirty = true;
 }
 applyPalette();
@@ -671,10 +684,28 @@ function frame(dt, now){
   }
   if (traffic){ traffic.update(dt, r.riding ? r : { x: r.x, y: r.y }); dirty = true; }
   airport.update(dt);   // the town is always moving now
+  for (const f of HOOKS.update) f(dt, now);
   if (booting) startReveal(now);
-  if (dirty){ dirty = false; renderer.render(scene, camera); if (booting){ booting = false; fadeIn(); } }
+  if (dirty){ dirty = false; if (HOOKS.render) HOOKS.render(dt); else renderer.render(scene, camera); if (shownAt === Infinity) shownAt = performance.now(); if (booting){ booting = false; fadeIn(); } else if (!detailAsked && !reveal && !intro.active && !tween && now - shownAt > 900) loadDetail(); }
 }
 let booting = document.documentElement.classList.contains('boot-3d');
+
+/* ---------------- second pass: extra realism, after the town is up ----------------
+   The town above is the quick version. Once it's on screen and the opening camera
+   move is over, detail3d.js is fetched and adds the rest a piece at a time
+   (window grids, street markings, yards, water, clouds, night glow...).
+   ?detail=0 turns it off; ?detail=max forces every effect on. */
+const DETAIL = params.get('detail');
+let detailAsked = DETAIL === '0', shownAt = Infinity;
+function loadDetail(){
+  detailAsked = true;
+  import('./detail3d.js').then(m => m.enhance({
+    THREE, scene, camera, renderer, M, X, Z, mobile, TEX, LM, TOWERS, HOOKS, ENV, mats, solid, reflect, glass, houses, leaves, leafBase, SNOW,
+    force: DETAIL === 'max', centre, xmasBulbs: [...bulbsA, ...bulbsB], lampHeads, CURB, ROAD, XS, YS, sun,
+    isSnowy: () => !!snowy, lit: () => Math.max(0, Math.min(1, ((1 - lastDay) - .25) / .5)), day: () => lastDay,
+    touch(shadows){ dirty = true; if (shadows) renderer.shadowMap.needsUpdate = true; },
+  })).then(() => { document.documentElement.dataset.detail = 'done'; }).catch(e => console.warn('detail pass skipped', e));
+}
 
 /* ---------------- 2D -> 3D hand-off ----------------
    The 2D map is on screen while this module loads. For the first 3D frame,
@@ -720,7 +751,7 @@ renderer.shadowMap.needsUpdate = true;
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.fov = fovFor(); camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight); sizeLabels(); dirty = true;
+  renderer.setSize(innerWidth, innerHeight); if (HOOKS.resize) HOOKS.resize(); sizeLabels(); dirty = true;
 });
 
 /* ---------------- switching views ---------------- */
