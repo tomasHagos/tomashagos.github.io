@@ -395,29 +395,40 @@ if (FX.holiday === 'christmas'){
   const cols = [0xff4d4d, 0xffd23f, 0x3ddc84, 0x4da3ff];
   const spots = [];
   for (let k = 0; k < 40; k++){ const a = k * 2.4, y = 20 + (k * 11) % 120, r = 52 * (1 - y / 160) + 4; spots.push([cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]); }
-  // Bulbs follow each roof's real edge: just outside the roof line at eave height.
-  // Home has a gable roof (ridge east-west), so its strings run along both eaves
-  // and up and over the two gable ends.
-  const EAVE = { priceline: 233, conquest: 113, birchwood: 73, education: 63, gada: 48, projects: 49, contact: 58, hobbies: 37, about: 49 };
-  Object.keys(EAVE).forEach(id => {
-    const r = LM[id], home = id === 'about', out = home ? 5 : 2.6;     // Home's eaves overhang 5
-    const x0 = r.x - out, x1 = r.x + r.w + out, y0 = r.y - out, y1 = r.y + r.h + out, w = x1 - x0, h = y1 - y0;
-    const rise = r.h * .45, cy = r.y + r.h / 2;
-    const per = 2 * (w + h), n = Math.round(per / 14);
-    for (let k = 0; k < n; k++){
-      let d = k * per / n, px, py, gable = false;
-      if (d < w){ px = x0 + d; py = y0; } else if ((d -= w) < h){ px = x1; py = y0 + d; gable = true; } else if ((d -= h) < w){ px = x1 - d; py = y1; } else { d -= w; px = x0; py = y1 - d; gable = true; }
-      let y = EAVE[id];
-      if (home && gable) y += rise * Math.max(0, 1 - Math.abs(py - cy) / (r.h / 2 + out)) + 1;   // trace the gable
-      spots.push([X(px), y, Z(py)]);
-    }
+  // Light strings hang from each roof's real edge, like real ones: a dark wire
+  // clipped under the roof lip that sags between clips, with small bulbs along it.
+  // Flat roofs: under the cap's 2-unit lip. Home: along both eaves, then up and
+  // over the two gable ends (ridge runs east-west).
+  const ROOFH = { priceline: 230, conquest: 110, birchwood: 70, education: 60, gada: 45, projects: 46, contact: 55, hobbies: 34 };
+  const wire = [], BULB = 6.5, CLIP = 26;
+  const string = (a, b, sag) => {                 // one edge, a/b = [x, y, z] world points
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]), spans = Math.max(1, Math.round(len / CLIP));
+    const at = t => { const u = (t * spans) % 1; return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t - sag * 4 * u * (1 - u), a[2] + (b[2] - a[2]) * t]; };
+    const steps = spans * 8;
+    for (let k = 0; k < steps; k++) wire.push(...at(k / steps), ...at((k + 1) / steps));
+    const n = Math.max(1, Math.round(len / BULB));
+    for (let k = 0; k < n; k++){ const q = at((k + .5) / n); spots.push([q[0], q[1] - 1.3, q[2]]); }
+  };
+  const loop = (pts, sag) => pts.forEach((p, i) => string(p, pts[(i + 1) % pts.length], sag));
+  Object.keys(ROOFH).forEach(id => {
+    const r = LM[id], y = ROOFH[id] - .4, o = 1.6;
+    const x0 = X(r.x - o), x1 = X(r.x + r.w + o), z0 = Z(r.y - o), z1 = Z(r.y + r.h + o);
+    loop([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], 3);
   });
-  const geo = new THREE.SphereGeometry(2.6, 8, 6);
+  { const r = LM.about, ov = 4.6, y = 48.4, rise = r.h * .45;
+    const x0 = X(r.x - ov), x1 = X(r.x + r.w + ov), z0 = Z(r.y - ov), z1 = Z(r.y + r.h + ov), zc = (z0 + z1) / 2;
+    string([x0, y, z1], [x1, y, z1], 2.5);        // front eave
+    string([x0, y, z0], [x1, y, z0], 2.5);        // back eave
+    [x0, x1].forEach(x => { string([x, y, z1], [x, y + rise, zc], 0); string([x, y + rise, zc], [x, y, z0], 0); });
+  }
+  const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wire, 3));
+  xmas.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x15301c })));
+  const geo = new THREE.SphereGeometry(1.25, 8, 6); geo.scale(1, 1.35, 1);   // small, slightly egg-shaped bulbs
   [bulbsA, bulbsB].forEach((arr, half) => {
     const pts = spots.filter((_, i) => i % 2 === half);
     const m = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }), pts.length);
     const o = new THREE.Object3D();
-    pts.forEach((p, i) => { o.position.set(...p); o.updateMatrix(); m.setMatrixAt(i, o.matrix); m.setColorAt(i, new THREE.Color(cols[(i + half) % 4])); });
+    pts.forEach((p, i) => { o.position.set(...p); o.scale.setScalar(i * 2 + half < 40 ? 1.8 : 1); o.updateMatrix(); m.setMatrixAt(i, o.matrix); m.setColorAt(i, new THREE.Color(cols[(i + half) % 4])); });
     xmas.add(m); arr.push(m);
   });
   // Santa hat on the rider
