@@ -17,6 +17,7 @@ import { Sky } from 'three/addons/objects/Sky.min.js';
 import { makeTextures, texturedMaterial, worldUV } from './textures3d.js';
 import { createHouses, gableRoof } from './houses3d.js';
 import { createCarKit, createWheels } from './cars3d.js';
+import { createAdminBuilding } from './uofm3d.js';
 
 const M = window.PortfolioMap;
 if (!M) throw new Error('three3d.js needs app.js');
@@ -42,6 +43,7 @@ const overviewBtn = document.getElementById('overviewBtn');
 controlsBar.insertBefore(ctlRow, overviewBtn);
 ctlRow.append(viewBtn, overviewBtn);
 
+const DETAIL0 = params.get('detail') === '0';           // no second pass: build everything at full quality now
 /* ---------------- renderer, scene, camera ---------------- */
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, mobile ? 1.5 : 2));
@@ -89,7 +91,8 @@ let envNow = .9;                                        // follows day/night (ap
 const reflect = m => { m.envMap = ENV; m.envMapIntensity = envNow; shiny.push(m); return m; };
 
 /* ---------------- surface textures ---------------- */
-const TEX = makeTextures(mobile);
+// Small, flat versions first (quick to paint); detail3d.js repaints them sharper later.
+const TEX = makeTextures(mobile, DETAIL0 ? {} : { size: mobile ? 128 : 256, normals: false });
 
 /* ---------------- palettes (summer / snowy) ---------------- */
 const PAL = {
@@ -130,8 +133,9 @@ function ribbon(off, material, y){
   const m = new THREE.Mesh(new THREE.ShapeGeometry(shape), material);
   m.rotation.x = Math.PI / 2; m.position.y = y; m.receiveShadow = true; scene.add(m);
 }
-ribbon(14, mat('bank', 0), 1.2);
-ribbon(0, mat('water', 0, { roughness: .2, metalness: .1 }), 1.6);
+// (the flat shape faces down after the turn, so draw both sides or the river vanishes from above)
+ribbon(14, mat('bank', 0, { side: THREE.DoubleSide }), 1.2);
+ribbon(0, mat('water', 0, { roughness: .2, metalness: .1, side: THREE.DoubleSide }), 1.6);
 
 const asphalt = texturedMaterial(TEX.asphalt, { roughness: .95 }), stripe = solid(0xe9c84e, { roughness: .7 }), side = mats.side;
 const x0 = XS[0], x1 = XS[XS.length - 1], y0 = YS[0], y1 = YS[YS.length - 1];
@@ -186,6 +190,7 @@ const leafBase = [];
 
 /* ---------------- houses (detailed, merged: see houses3d.js) ---------------- */
 const houses = createHouses(scene, M, { X, Z, TEX, CURB });
+if (DETAIL0) houses.finish();
 reflect(houses.glass);
 
 /* ---------------- landmarks ---------------- */
@@ -246,8 +251,7 @@ const lot = { x: LM.birchwood.x, y: LM.birchwood.y - 150, w: 240, h: 130 };
   // painted parking lines
   for (let row = 0; row < 2; row++) for (let k = 0; k <= 7; k++) flat(1.2, 48, solid(0xf2f2ee), X(lot.x + 8 + k * 32), Z(lot.y + 33 + row * 64), 3);
 }
-tower(LM.education, 60, 0xc9b8a6, 0xa8957f); TOP.education = 94;
-{ const { cx, cz } = centre(LM.education); const d = new THREE.Mesh(new THREE.SphereGeometry(30, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), solid(0x6fb59a, { roughness: .4, metalness: .3 })); d.position.set(cx, 64, cz); d.castShadow = true; scene.add(d); }
+const uofm = createAdminBuilding(scene, LM.education, { X, Z, TEX, reflect }); TOP.education = uofm.top;
 tower(LM.gada, 45, 0x9aa5b8, 0x7a869a); TOP.gada = 49;
 const prism = new THREE.CylinderGeometry(1, 1, 1, 3); prism.rotateZ(Math.PI / 2);
 const homeRoofMat = texturedMaterial(TEX.shingles, { color: 0xe08a6a, roughness: .95 });
@@ -408,7 +412,7 @@ if (FX.holiday === 'christmas'){
   // clipped under the roof lip that sags between clips, with small bulbs along it.
   // Flat roofs: under the cap's 2-unit lip. Home: along both eaves, then up and
   // over the two gable ends (ridge runs east-west).
-  const ROOFH = { priceline: 230, conquest: 110, birchwood: 70, education: 60, gada: 45, projects: 46, contact: 55, hobbies: 34 };
+  const ROOFH = { priceline: 230, conquest: 110, birchwood: 70, gada: 45, projects: 46, contact: 55, hobbies: 34 };
   const wire = [], BULB = 6.5, CLIP = 26;
   const string = (a, b, sag) => {                 // one edge, a/b = [x, y, z] world points
     const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]), spans = Math.max(1, Math.round(len / CLIP));
@@ -424,6 +428,8 @@ if (FX.holiday === 'christmas'){
     const x0 = X(r.x - o), x1 = X(r.x + r.w + o), z0 = Z(r.y - o), z1 = Z(r.y + r.h + o);
     loop([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], 3);
   });
+  { const r = uofm.eaveRect, y = uofm.eave - 2.8, x0 = X(r.x - .6), x1 = X(r.x + r.w + .6), z0 = Z(r.y - .6), z1 = Z(r.y + r.h + .6);   // U of M: under its stone cornice
+    loop([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], 3); }
   { const r = LM.about, ov = 4.6, y = 48.4, rise = r.h * .45;
     const x0 = X(r.x - ov), x1 = X(r.x + r.w + ov), z0 = Z(r.y - ov), z1 = Z(r.y + r.h + ov), zc = (z0 + z1) / 2;
     string([x0, y, z1], [x1, y, z1], 2.5);        // front eave
@@ -503,7 +509,7 @@ function applyDaylight(day){
   envNow = mix(.08, .9); shiny.forEach(m => { m.envMapIntensity = envNow; });
   const lit = Math.max(0, Math.min(1, (night - .25) / .5));   // lights switch on around dusk
   glass.emissiveIntensity = .85 * lit;
-  houses.setNight(lit);
+  houses.setNight(lit); uofm.setNight(lit);
   if (homeGlass) homeGlass.emissiveIntensity = 1.1 * lit;
   poolMat.opacity = .55 * lit; haloMat.opacity = .9 * lit; pools.visible = lit > .01; halos.forEach(h => { h.visible = lit > .01; });
   lampHeads.material.color.setHex(lit > .01 ? 0xffe6a8 : 0xd9dde2);
@@ -528,7 +534,7 @@ function applyPalette(){
   lastDay = -1;                          // re-apply lighting with the new palette
   for (let i = 0; i < leafBase.length; i++){ const c = leafBase[i].clone(); if (s) c.lerp(SNOW, .5); leaves.setColorAt(i, c); }
   leaves.instanceColor.needsUpdate = true;
-  houses.setSnow(s);
+  houses.setSnow(s); uofm.setSnow(s);
   roofCaps.forEach(m => m.material.color.set(s ? new THREE.Color(m.userData.base).lerp(SNOW, .85) : m.userData.base));
   tents.forEach(t => t.material.color.set(s ? new THREE.Color(t.userData.base).lerp(SNOW, .45) : t.userData.base));
   homeRoof.material.color.set(s ? new THREE.Color(0xf4f7fa) : 0xe08a6a);
@@ -700,8 +706,8 @@ let detailAsked = DETAIL === '0', shownAt = Infinity;
 function loadDetail(){
   detailAsked = true;
   import('./detail3d.js').then(m => m.enhance({
-    THREE, scene, camera, renderer, M, X, Z, mobile, TEX, LM, TOWERS, HOOKS, ENV, mats, solid, reflect, glass, houses, leaves, leafBase, SNOW,
-    force: DETAIL === 'max', centre, xmasBulbs: [...bulbsA, ...bulbsB], lampHeads, CURB, ROAD, XS, YS, sun,
+    THREE, scene, camera, renderer, M, X, Z, mobile, TEX, LM, TOWERS, HOOKS, trees, trunks, BLOBS, SITE, lampPoles, LAMP_SPOTS, asphalt, uofm, ENV, mats, solid, reflect, glass, houses, leaves, leafBase, SNOW,
+    force: DETAIL === 'max', holiday: FX.holiday, centre, xmasBulbs: [...bulbsA, ...bulbsB], lampHeads, CURB, ROAD, XS, YS, sun,
     isSnowy: () => !!snowy, lit: () => Math.max(0, Math.min(1, ((1 - lastDay) - .25) / .5)), day: () => lastDay,
     touch(shadows){ dirty = true; if (shadows) renderer.shadowMap.needsUpdate = true; },
   })).then(() => { document.documentElement.dataset.detail = 'done'; }).catch(e => console.warn('detail pass skipped', e));

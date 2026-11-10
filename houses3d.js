@@ -68,7 +68,10 @@ export function createHouses(scene, M, { X, Z, TEX, CURB }){
   const blockOf = (v, arr) => { for (let i = 0; i < arr.length - 1; i++) if (v >= arr[i] && v <= arr[i + 1]) return i; return -1; };
   const houseM = new THREE.Matrix4();
   const lots = [];                          // per-house frame + sizes, for the detail pass
-  M.houses.forEach((hs, i) => {
+  // Built in two goes so the town shows sooner: phase 0 is the shell (walls, roof, doors),
+  // phase 1 the fiddly bits (windows, trim, porches, chimneys, paths), added by finish().
+  const build = phase => M.houses.forEach((hs, i) => {
+    const base = phase === 0, late = !base;
     const cx = hs.x + hs.w / 2, cy = hs.y + hs.h / 2;
     const bi = blockOf(cx, XS), bj = blockOf(cy, YS);
     if (bi < 0 || bj < 0) return;
@@ -84,30 +87,35 @@ export function createHouses(scene, M, { X, Z, TEX, CURB }){
     const wallKey = brick ? 'brick' : 'siding', wallCol = brick ? BRICK[i % BRICK.length] : SIDING[(i * 3) % SIDING.length];
     const F = 2.4;                                         // foundation height
 
+    if (base){
     boxAt('found', Wd + 1.6, F, Dp + 1.6, 0, 0, 0, houseM, { uv: true });
     boxAt(wallKey, Wd, wallH, Dp, 0, F, 0, houseM, { uv: true, color: wallCol });
-    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => boxAt('trim', 1.6, wallH, 1.6, sx * Wd / 2, F, sz * Dp / 2, houseM));
-    boxAt('trim', Wd + 1.2, 1.2, Dp + 1.2, 0, F + wallH - 1.2, 0, houseM);       // frieze board under the eaves
-    const roofG = gableRoof(Wd, Dp, Dp * .42, 4); roofG.translate(0, F + wallH, 0);
-    put('roof', roofG, houseM, ROOF[(i * 5) % ROOF.length]);
+    }
+    if (late) [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => boxAt('trim', 1.6, wallH, 1.6, sx * Wd / 2, F, sz * Dp / 2, houseM));
+    if (late) boxAt('trim', Wd + 1.2, 1.2, Dp + 1.2, 0, F + wallH - 1.2, 0, houseM);       // frieze board under the eaves
+    if (base){ const roofG = gableRoof(Wd, Dp, Dp * .42, 4); roofG.translate(0, F + wallH, 0);
+    put('roof', roofG, houseM, ROOF[(i * 5) % ROOF.length]); }
     // gable-end triangles (fill the wall up to the roof on both sides)
-    { const s = new THREE.Shape(); s.moveTo(-Dp / 2, 0); s.lineTo(0, Dp * .42 - 1.5); s.lineTo(Dp / 2, 0); s.closePath();
+    if (base){ const s = new THREE.Shape(); s.moveTo(-Dp / 2, 0); s.lineTo(0, Dp * .42 - 1.5); s.lineTo(Dp / 2, 0); s.closePath();
       const g = new THREE.ExtrudeGeometry(s, { depth: Wd - .2, bevelEnabled: false }); g.translate(0, 0, -(Wd - .2) / 2); g.rotateY(Math.PI / 2); g.translate(0, F + wallH, 0);
       worldUV(g); put(wallKey, g, houseM, wallCol); }
 
     // front: door (+ porch), windows, garage door
     const front = Dp / 2;
     const doorX = garage ? -Wd * .26 : (twoStorey ? 0 : -Wd * .08);
-    boxAt('door', 6.5, 13, .8, doorX, F, front, houseM, { color: DOOR[i % DOOR.length] });
-    boxAt('trim', 8.6, 1.2, 1.2, doorX, F + 13.4, front + .2, houseM);
-    boxAt('concrete', 11, F, 6, doorX, 0, front + 3.4, houseM, { uv: true });    // step
-    if (porch){
+    if (base) boxAt('door', 6.5, 13, .8, doorX, F, front, houseM, { color: DOOR[i % DOOR.length] });
+    if (late) boxAt('trim', 8.6, 1.2, 1.2, doorX, F + 13.4, front + .2, houseM);
+    if (late) boxAt('concrete', 11, F, 6, doorX, 0, front + 3.4, houseM, { uv: true });    // step
+    if (late && porch){
       boxAt('trim', 14, 1.1, 7.5, doorX, F + 16.2, front + 3.6, houseM);
       [-6, 6].forEach(o => boxAt('trim', 1.1, 15.8, 1.1, doorX + o, F + .4, front + 6.6, houseM));
     }
     const winY = F + wallH * (twoStorey ? .28 : .52);
+    const toEdge = d[side] - CURB - deep / 2 - 6.4;
+    if (base) lots.push({ m: houseM.clone(), Wd, Dp, F, wallH, garage, porch, doorX, front, toEdge, i, side, rot, cx, cy });
+    if (base && garage) boxAt('garage', Wd * .38, 13.5, .7, Wd * .22, F, front + .1, houseM, { uv: true });
+    if (late){
     if (garage){
-      boxAt('garage', Wd * .38, 13.5, .7, Wd * .22, F, front + .1, houseM, { uv: true });
       boxAt('trim', Wd * .38 + 2, 1.2, 1.2, Wd * .22, F + 13.8, front + .3, houseM);
       windowAt(houseM, -Wd * .05, winY, 0, front, 8, 7);
     } else {
@@ -121,13 +129,12 @@ export function createHouses(scene, M, { X, Z, TEX, CURB }){
     // chimney (most houses), poking through the back slope
     if (i % 4 !== 3){
       const ch = Dp * .42 + 9, chx = Wd * (i % 2 ? .3 : -.3);
-      boxAt('brick', 5.5, ch, 5.5, chx, F + wallH - 2, -Dp * .16, houseM, { uv: true, color: BRICK[0] });
+      boxAt('chimney', 5.5, ch, 5.5, chx, F + wallH - 2, -Dp * .16, houseM, { uv: true, color: BRICK[0] });
       boxAt('cap', 6.6, 1, 6.6, chx, F + wallH - 2 + ch, -Dp * .16, houseM);
     }
     // path from the step to the sidewalk (block edge)
-    const toEdge = d[side] - CURB - deep / 2 - 6.4;
-    lots.push({ m: houseM.clone(), Wd, Dp, F, wallH, garage, porch, doorX, front, toEdge, i });
     if (toEdge > 2){ const g = new THREE.BoxGeometry(5, .5, toEdge); g.translate(0, .25, 0); worldUV(g, i * 3.1, 0); L.makeTranslation(doorX, .5, front + 6.4 + toEdge / 2); put('concrete', g, T.multiplyMatrices(houseM, L)); }
+    }
   });
 
   /* ---------- materials + merge ---------- */
@@ -144,6 +151,7 @@ export function createHouses(scene, M, { X, Z, TEX, CURB }){
     garage: texturedMaterial(TEX.garage, { roughness: .6 }),
     cap: new THREE.MeshStandardMaterial({ color: 0x77736e, roughness: .8 }),
   };
+  MATS.chimney = MATS.brick;
   [MATS.siding, MATS.brick, MATS.roof, MATS.found, MATS.concrete, MATS.garage].forEach(m => {
     // textures are shared; world UVs are in map units, so scale by the texture's tile size
     m.map = m.map.clone(); if (m.normalMap) m.normalMap = m.normalMap.clone();
@@ -151,7 +159,7 @@ export function createHouses(scene, M, { X, Z, TEX, CURB }){
     [m.map, m.normalMap].filter(Boolean).forEach(x => { x.repeat.set(1 / t.tile, 1 / t.tile); x.needsUpdate = true; });
   });
   const meshes = {};
-  for (const [key, list] of Object.entries(buckets)){
+  const flush = () => { for (const [key, list] of Object.entries(buckets)){
     // every piece in a bucket must have the same attributes before merging
     const needColor = list.some(g => g.attributes.color);
     if (needColor) list.forEach(g => { if (!g.attributes.color){ const c = new Float32Array(g.attributes.position.count * 3).fill(1); g.setAttribute('color', new THREE.BufferAttribute(c, 3)); } });
@@ -159,12 +167,14 @@ export function createHouses(scene, M, { X, Z, TEX, CURB }){
     const merged = mergeGeometries(list, false);
     const mesh = new THREE.Mesh(merged, MATS[key]);
     mesh.castShadow = key !== 'concrete' && key !== 'glass'; mesh.receiveShadow = true;
-    scene.add(mesh); meshes[key] = mesh;
-  }
+    scene.add(mesh); meshes[key] = mesh; delete buckets[key];
+  } };
+  build(0); flush();
 
   const roofMap = MATS.roof.map, snowMap = TEX.snow.map.clone(); snowMap.repeat.set(1 / 30, 1 / 30); snowMap.needsUpdate = true;
   return {
     meshes, glass, lots, mats: MATS,
+    finish(){ build(1); flush(); },      // the detail pass calls this once the town is on screen
     setSnow(on){
       MATS.roof.map = on ? snowMap : roofMap;
       MATS.roof.vertexColors = !on;
