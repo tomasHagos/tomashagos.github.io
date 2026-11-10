@@ -395,11 +395,23 @@ if (FX.holiday === 'christmas'){
   const cols = [0xff4d4d, 0xffd23f, 0x3ddc84, 0x4da3ff];
   const spots = [];
   for (let k = 0; k < 40; k++){ const a = k * 2.4, y = 20 + (k * 11) % 120, r = 52 * (1 - y / 160) + 4; spots.push([cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]); }
-  Object.keys(TOP).forEach(id => { if (id === 'skills') return; const r = LM[id], y = TOP[id] - (id === 'about' ? 18 : 0) + 3;
-    const per = 2 * (r.w + r.h), n = Math.round(per / 16);
-    for (let k = 0; k < n; k++){ let d = k * per / n, px, py;
-      if (d < r.w){ px = r.x + d; py = r.y; } else if ((d -= r.w) < r.h){ px = r.x + r.w; py = r.y + d; } else if ((d -= r.h) < r.w){ px = r.x + r.w - d; py = r.y + r.h; } else { d -= r.w; px = r.x; py = r.y + r.h - d; }
-      spots.push([X(px), id === 'priceline' ? 232 : y, Z(py)]); } });
+  // Bulbs follow each roof's real edge: just outside the roof line at eave height.
+  // Home has a gable roof (ridge east-west), so its strings run along both eaves
+  // and up and over the two gable ends.
+  const EAVE = { priceline: 233, conquest: 113, birchwood: 73, education: 63, gada: 48, projects: 49, contact: 58, hobbies: 37, about: 49 };
+  Object.keys(EAVE).forEach(id => {
+    const r = LM[id], home = id === 'about', out = home ? 5 : 2.6;     // Home's eaves overhang 5
+    const x0 = r.x - out, x1 = r.x + r.w + out, y0 = r.y - out, y1 = r.y + r.h + out, w = x1 - x0, h = y1 - y0;
+    const rise = r.h * .45, cy = r.y + r.h / 2;
+    const per = 2 * (w + h), n = Math.round(per / 14);
+    for (let k = 0; k < n; k++){
+      let d = k * per / n, px, py, gable = false;
+      if (d < w){ px = x0 + d; py = y0; } else if ((d -= w) < h){ px = x1; py = y0 + d; gable = true; } else if ((d -= h) < w){ px = x1 - d; py = y1; } else { d -= w; px = x0; py = y1 - d; gable = true; }
+      let y = EAVE[id];
+      if (home && gable) y += rise * Math.max(0, 1 - Math.abs(py - cy) / (r.h / 2 + out)) + 1;   // trace the gable
+      spots.push([X(px), y, Z(py)]);
+    }
+  });
   const geo = new THREE.SphereGeometry(2.6, 8, 6);
   [bulbsA, bulbsB].forEach((arr, half) => {
     const pts = spots.filter((_, i) => i % 2 === half);
