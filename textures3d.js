@@ -39,11 +39,14 @@ function make(size, tile, paint, normalStrength){
   return { map, normalMap, tile };
 }
 
-export function makeTextures(mobile){
-  const S = mobile ? 256 : 512;
-  NO_NORMALS = mobile;
-  return {
-    brick: make(S, 34, (g, h, s) => {
+// opts.size / opts.normals override the defaults; opts.lazy returns { name: () => texture }
+// so the caller can paint them one at a time (the detail pass does, between frames).
+export function makeTextures(mobile, opts = {}){
+  const S = opts.size || (mobile ? 256 : 512);
+  const noNormals = opts.normals === undefined ? mobile : !opts.normals;
+  NO_NORMALS = noNormals;
+  const defs = {
+    brick: () => make(S, 34, (g, h, s) => {
       g.fillStyle = '#b9b2a7'; g.fillRect(0, 0, s, s); h.fillStyle = '#404040'; h.fillRect(0, 0, s, s);
       const R = rng(3), bw = 64, bh = 24, m = 4;
       for (let row = 0; row < s / bh; row++) for (let col = -1; col < s / bw + 1; col++){
@@ -53,7 +56,7 @@ export function makeTextures(mobile){
       }
       speckle(g, s, 9000, 2, .18, ['#000', '#fff', '#5a2a1a'], 4); speckle(h, s, 6000, 2, .25, ['#000', '#fff'], 5);
     }, 3),
-    siding: make(S, 26, (g, h, s) => {
+    siding: () => make(S, 26, (g, h, s) => {
       for (let y = 0; y < s; y += 32){
         const gr = g.createLinearGradient(0, y, 0, y + 32); gr.addColorStop(0, '#f4f1ea'); gr.addColorStop(.85, '#e6e2d8'); gr.addColorStop(1, '#b4afa4');
         g.fillStyle = gr; g.fillRect(0, y, s, 32);
@@ -62,7 +65,7 @@ export function makeTextures(mobile){
       }
       speckle(g, s, 4000, 3, .05, ['#000', '#fff'], 7);
     }, 2.5),
-    shingles: make(S, 30, (g, h, s) => {
+    shingles: () => make(S, 30, (g, h, s) => {
       g.fillStyle = '#5a5654'; g.fillRect(0, 0, s, s); h.fillStyle = '#202020'; h.fillRect(0, 0, s, s);
       const R = rng(11), bw = 42, bh = 26;
       for (let row = 0; row < s / bh + 1; row++) for (let col = -1; col < s / bw + 1; col++){
@@ -73,37 +76,39 @@ export function makeTextures(mobile){
       }
       speckle(g, s, 14000, 1.6, .3, ['#000', '#888', '#5a4a40'], 12);
     }, 3),
-    asphalt: make(S, 70, (g, h, s) => {
+    asphalt: () => make(S, 70, (g, h, s) => {
       g.fillStyle = '#4a4c50'; g.fillRect(0, 0, s, s);
       speckle(g, s, 30000, 1.6, .5, ['#36383b', '#64676b', '#55585c', '#3d3f42'], 21);
       speckle(h, s, 26000, 1.6, .6, ['#000', '#fff'], 22);
       g.strokeStyle = 'rgba(25,25,25,.5)'; g.lineWidth = 1.3; const R = rng(23);
       for (let k = 0; k < 5; k++){ g.beginPath(); let x = R() * s, y = R() * s; g.moveTo(x, y); for (let j = 0; j < 9; j++){ x += (R() - .5) * 50; y += (R() - .5) * 50; g.lineTo(x, y); } g.stroke(); }
     }, 1.4),
-    concrete: make(S, 20, (g, h, s) => {
+    concrete: () => make(S, 20, (g, h, s) => {
       g.fillStyle = '#c4c1ba'; g.fillRect(0, 0, s, s);
       speckle(g, s, 16000, 2, .14, ['#98968f', '#dedbd4', '#aeaba4'], 31);
       g.fillStyle = 'rgba(70,70,70,.5)'; g.fillRect(0, 0, s, 3); g.fillRect(0, 0, 3, s);
       h.fillStyle = '#202020'; h.fillRect(0, 0, s, 3); h.fillRect(0, 0, 3, s);
     }, 2),
-    grass: make(S, 90, (g, h, s) => {
+    grass: () => make(S, 90, (g, h, s) => {
       g.fillStyle = '#5a8a3a'; g.fillRect(0, 0, s, s);
       { const R = rng(40); for (let k = 0; k < 40; k++){ const x = R() * s, y = R() * s, r = 30 + R() * 80, gr = g.createRadialGradient(x, y, 0, x, y, r); const c = R() < .5 ? '78,120,44' : '108,145,62'; gr.addColorStop(0, `rgba(${c},.45)`); gr.addColorStop(1, `rgba(${c},0)`); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); } }
       speckle(g, s, 50000, 2, .45, ['#477330', '#7aa553', '#638f42', '#87ac57', '#3b6328'], 41);
       speckle(h, s, 30000, 2, .5, ['#000', '#fff'], 42);
     }, 1.6),
-    snow: make(S, 90, (g, h, s) => {
+    snow: () => make(S, 90, (g, h, s) => {
       g.fillStyle = '#f2f5f8'; g.fillRect(0, 0, s, s);
       { const R = rng(50); for (let k = 0; k < 30; k++){ const x = R() * s, y = R() * s, r = 40 + R() * 90, gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(205,218,232,.35)'); gr.addColorStop(1, 'rgba(205,218,232,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); } }
       speckle(g, s, 8000, 2, .25, ['#ffffff', '#dfe7ef'], 51);
       speckle(h, s, 12000, 3, .35, ['#000', '#fff'], 52);
     }, 1.2),
-    garage: make(Math.min(S, 256), 22, (g, h, s) => {
+    garage: () => make(Math.min(S, 256), 22, (g, h, s) => {
       g.fillStyle = '#efeee9'; g.fillRect(0, 0, s, s); h.fillStyle = '#a0a0a0'; h.fillRect(0, 0, s, s);
       for (let y = 0; y < s; y += s / 4){ g.fillStyle = '#c9c7c0'; g.fillRect(0, y, s, 6); h.fillStyle = '#202020'; h.fillRect(0, y, s, 6);
         for (let x = 16; x < s; x += s / 4){ h.fillStyle = '#d8d8d8'; h.fillRect(x, y + 20, s / 4 - 32, s / 4 - 40); } }
     }, 2.5),
   };
+  if (opts.lazy) return Object.fromEntries(Object.entries(defs).map(([k, f]) => [k, () => { NO_NORMALS = noNormals; return f(); }]));
+  return Object.fromEntries(Object.entries(defs).map(([k, f]) => [k, f()]));
 }
 
 // Material using one of the textures above (expects world UVs on the geometry).
