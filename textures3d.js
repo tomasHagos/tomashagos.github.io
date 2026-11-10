@@ -9,12 +9,16 @@
 import * as THREE from 'three';
 
 function rng(seed){ return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-const speckle = (g, s, n, r, alpha, colors, seed) => { const R = rng(seed); for (let i = 0; i < n; i++){ g.fillStyle = colors[Math.floor(R() * colors.length)]; g.globalAlpha = alpha * (.4 + R() * .6); g.fillRect(R() * s, R() * s, r * (.5 + R()), r * (.5 + R())); } g.globalAlpha = 1; };
+let DENS = 1;                               // fewer specks on small textures (they would only blur together)
+const speckle = (g, s, n, r, alpha, colors, seed) => { const R = rng(seed); n = Math.round(n * DENS); if (DENS < 1) r *= 1.6; for (let i = 0; i < n; i++){ g.fillStyle = colors[Math.floor(R() * colors.length)]; g.globalAlpha = alpha * (.4 + R() * .6); g.fillRect(R() * s, R() * s, r * (.5 + R()), r * (.5 + R())); } g.globalAlpha = 1; };
 
 let NO_NORMALS = false;                     // phones: skip bump detail (cheaper to draw)
 function make(size, tile, paint, normalStrength){
   const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d');
-  const h = document.createElement('canvas'); h.width = h.height = size; const hg = h.getContext('2d');
+  DENS = Math.min(1, size * size / (512 * 512) * 2);
+  // the height picture is only needed for bumps; without them, drawing into it is skipped
+  const h = NO_NORMALS ? null : document.createElement('canvas'); if (h) h.width = h.height = size;
+  const hg = h ? h.getContext('2d') : new Proxy({}, { get: () => () => ({ addColorStop(){} }), set: () => true });
   hg.fillStyle = '#808080'; hg.fillRect(0, 0, size, size);
   const k = size / 512;                      // paint in 512-space, scaled to the real size
   g.scale(k, k); hg.scale(k, k);

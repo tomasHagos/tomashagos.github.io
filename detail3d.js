@@ -10,12 +10,14 @@
  *   soft shading at wall bases    roof parapets and a mast with a beacon
  *   rippling, reflective river    clouds on the horizon
  *   fuller trees (computers)      glow around lights at night (dropped if the device is slow)
+ *   plus everything in places3d.js: yards, car parks, parks, street furniture, more trees
  *
  * Nothing in here is needed for the site to work: if it fails, the quick town stays.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.min.js';
 import { makeTextures, texturedMaterial, worldUV } from './textures3d.js';
+import { placeStages } from './places3d.js';
 
 const idle = () => new Promise(r => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 400 }) : setTimeout(r, 50)));
 function rng(seed){ return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -24,8 +26,10 @@ export async function enhance(c){
   const { scene, camera, renderer } = c;
   // compile an object's shaders off the main thread where possible, then show it
   const add = async obj => { try { if (renderer.compileAsync) await renderer.compileAsync(obj, camera, scene); } catch (e) {} scene.add(obj); c.touch(); };
+  c.bushGeo = c.leaves.geometry;                 // the light canopy shape, kept for bushes
   const stages = [
-    ...textureStages(c), () => facades(c, add), () => markings(c, add), () => yards(c, add), () => contactShade(c, add),
+    () => { c.houses.finish(); c.touch(true); }, () => facades(c, add), () => markings(c, add), () => yards(c, add),
+    ...placeStages(c, add), () => contactShade(c, add), ...textureStages(c),
     () => rooftops(c, add), () => water(c), () => clouds(c, add), () => trees(c), () => glow(c),
   ];
   for (const stage of stages){
@@ -46,12 +50,11 @@ function textureStages(c){
     const seen = new Set();
     const swap = m => {
       if (!m || seen.has(m)) return; seen.add(m);
-      for (const [slot, o, n] of [['map', old.map, neu.map], ['normalMap', old.normalMap, neu.normalMap]]){
-        const cur = m[slot];
-        if (!cur || !o || !n || cur.source !== o.source) continue;
-        if (cur === o){ m[slot] = n; continue; }
-        const t = n.clone(); t.repeat.copy(cur.repeat); t.offset.copy(cur.offset); t.needsUpdate = true; m[slot] = t; cur.dispose();
-      }
+      const cur = m.map;
+      if (!cur || cur.source !== old.map.source) return;
+      const like = n => { if (cur === old.map && !m.normalMap) return n; const t = n.clone(); t.repeat.copy(cur.repeat); t.offset.copy(cur.offset); t.needsUpdate = true; return t; };
+      if (neu.normalMap){ const had = !!m.normalMap; if (had && m.normalMap !== old.normalMap) m.normalMap.dispose(); m.normalMap = cur === old.map ? neu.normalMap : like(neu.normalMap); if (!had) m.needsUpdate = true; }   // first bumps: shader rebuilds once
+      if (cur === old.map) m.map = neu.map; else { m.map = like(neu.map); cur.dispose(); }
     };
     scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(swap); });
     Object.values(c.mats).forEach(swap);          // includes materials that are swapped in and out (grass / snow)
@@ -101,14 +104,15 @@ function facades(c, add){
   const quad = (a, b, cc, d, u0, u1, v0, v1, k) => {
     [[a, u0, v0], [b, u1, v0], [cc, u1, v1], [a, u0, v0], [cc, u1, v1], [d, u0, v1]].forEach(([p, u, v]) => { pos.push(...p); uv.push(u, v); colr.push(k.r, k.g, k.b); });
   };
-  TOWERS.filter(t => t.windows).forEach((t, ti) => {
-    const r = t.r, rows = Math.floor((t.h - Y0 - 3) / CH), y0 = Y0, y1 = Y0 + rows * CH, O = .95;
+  TOWERS.forEach((t, ti) => {                      // the low, plain buildings get a floor or two of windows as well
+    const base = t.windows ? Y0 : 4, r = t.r, rows = Math.floor((t.h - base - 3) / CH), y0 = base, y1 = base + rows * CH, O = t.windows ? .95 : .35;
+    if (rows < 1) return;
     const xa = X(r.x), xb = X(r.x + r.w), za = Z(r.y), zb = Z(r.y + r.h);
     const k = new THREE.Color(t.wall).lerp(new THREE.Color(0xffffff), .25);
     const v0 = (ti * 3 % CELLS) / CELLS, v1 = v0 + rows / CELLS;
     const U = (len, f) => { const u0 = ((ti * 5 + f * 3) % CELLS) / CELLS; return [u0, u0 + len / CW / CELLS]; };
     let u;
-    u = U(r.w, 0); quad([xa, y0, zb + O], [xb, y0, zb + O], [xb, y1, zb + O], [xa, y1, zb + O], u[0], u[1], v0, v1, k);   // south
+    if (t.wall !== 0xf4a261) u = U(r.w, 0), quad([xa, y0, zb + O], [xb, y0, zb + O], [xb, y1, zb + O], [xa, y1, zb + O], u[0], u[1], v0, v1, k);   // south
     u = U(r.w, 1); quad([xb, y0, za - O], [xa, y0, za - O], [xa, y1, za - O], [xb, y1, za - O], u[0], u[1], v0, v1, k);   // north
     u = U(r.h, 2); quad([xb + O, y0, zb], [xb + O, y0, za], [xb + O, y1, za], [xb + O, y1, zb], u[0], u[1], v0, v1, k);   // east
     u = U(r.h, 3); quad([xa - O, y0, za], [xa - O, y0, zb], [xa - O, y1, zb], [xa - O, y1, za], u[0], u[1], v0, v1, k);   // west
@@ -182,11 +186,11 @@ function contactShade(c, add){
     const xs = [-w / 2 - mg, -w / 2, w / 2, w / 2 + mg], zs = [-d / 2 - mg, -d / 2, d / 2, d / 2 + mg], us = [0, .5, .5, 1];
     for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++){
       if (i === 1 && j === 1) continue;
-      [[i, j], [i, j + 1], [i + 1, j + 1], [i, j], [i + 1, j + 1], [i + 1, j]].forEach(([a, b]) => { v.set(xs[a], .95, zs[b]).applyMatrix4(m); pos.push(v.x, v.y, v.z); uv.push(us[a], us[b]); });
+      [[i, j], [i, j + 1], [i + 1, j + 1], [i, j], [i + 1, j + 1], [i + 1, j]].forEach(([a, b]) => { v.set(xs[a], 1.3, zs[b]).applyMatrix4(m); pos.push(v.x, v.y, v.z); uv.push(us[a], us[b]); });
     }
   };
   houses.lots.forEach(l => frame(l.Wd + 1.6, l.Dp + 1.6, 7, l.m));
-  const rects = [...TOWERS.map(t => t.r), LM.about];
+  const rects = [...TOWERS.map(t => t.r), LM.about, LM.education];
   rects.forEach(r => frame(r.w, r.h, 14, new THREE.Matrix4().makeTranslation(X(r.x + r.w / 2), 0, Z(r.y + r.h / 2))));
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x060b14, map: tex, transparent: true, opacity: .5, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
@@ -224,12 +228,12 @@ function water(c){
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++){
     let dx = 0, dy = 0;
     for (const w of waves){ const cs = Math.cos((w.kx * x + w.ky * y) / S * 6.2832 + w.p) * w.a; dx += cs * w.kx; dy += cs * w.ky; }
-    dx *= .05; dy *= .05; const l = Math.hypot(dx, dy, 1), i = (y * S + x) * 4;
+    dx *= .022; dy *= .022; const l = Math.hypot(dx, dy, 1), i = (y * S + x) * 4;
     img.data[i] = (-dx / l * .5 + .5) * 255; img.data[i + 1] = (-dy / l * .5 + .5) * 255; img.data[i + 2] = (1 / l * .5 + .5) * 255; img.data[i + 3] = 255;
   }
   g.putImageData(img, 0, 0);
-  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / 110, 1 / 110);
-  m.normalMap = t; m.normalScale = new THREE.Vector2(.55, .55); m.roughness = .1; m.metalness = .45; c.reflect(m); m.needsUpdate = true;
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / 190, 1 / 190);
+  m.normalMap = t; m.normalScale = new THREE.Vector2(.5, .5); m.roughness = .22; m.metalness = .3; c.reflect(m); m.needsUpdate = true;
   if (!c.M.reduceMotion) c.HOOKS.update.push(dt => { t.offset.y -= dt * .02; t.offset.x += dt * .004; c.touch(); });
   c.touch();
 }
@@ -268,6 +272,7 @@ function trees(c){
   }
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
   c.leaves.geometry = g;                          // (the bushes keep sharing the old, lighter shape)
+  if (c.extraLeaves) c.extraLeaves.geometry = g;
   c.touch(true);
 }
 
