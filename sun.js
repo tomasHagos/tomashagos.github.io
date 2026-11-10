@@ -7,9 +7,9 @@
  *      PortfolioSun.daylight()  1 = full day, 0 = night, in between at dawn/dusk
  *      ?time=day | night | dusk   forces one for previewing
  *
- * 2. Boot: decides 2D vs 3D *before* the page paints. When the visitor will
- *    get 3D, it hides the 2D map until the first 3D frame is ready, so the 2D
- *    map no longer flashes and then jumps to 3D.
+ * 2. Boot: decides 2D vs 3D *before* the page paints. 3D visitors see the 2D
+ *    map straight away while 3D loads; three3d.js then fades the 3D town in
+ *    from a matching top-down view and tilts into 3D, so there's no jump.
  */
 (function(){
   var LAT = 49.8954, LON = -97.1385;           // Winnipeg
@@ -50,8 +50,6 @@
   var gl = false;
   try { var c = document.createElement('canvas'); gl = !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) {}
   if (mode !== '2d' && gl){
-    html.classList.add('boot-3d');
-    // Safety net: if 3D never shows up (slow network, script error), show the 2D map.
-    setTimeout(function(){ if (html.classList.contains('boot-3d') && !window.Portfolio3D) html.classList.remove('boot-3d'); }, 8000);
+    html.classList.add('boot-3d');      // 2D stays visible until the 3D view fades in
   }
 })();

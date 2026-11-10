@@ -32,12 +32,36 @@ export function createTraffic(scene, M, { X, Z, mobile }){
 
   /* ---------- cars ---------- */
   const CAR_COLOURS = [0xe63946, 0xf1faee, 0x1d3557, 0xffb703, 0x8ecae6, 0x2a9d8f, 0x6c757d, 0xf4a261, 0x3a86ff, 0x8338ec];
-  const bodyGeo = new THREE.BoxGeometry(26, 8, 13);
-  const cabinGeo = new THREE.BoxGeometry(13, 7, 11);
-  const glass = new THREE.MeshStandardMaterial({ color: 0x26333b, roughness: .2, metalness: .3 });
-  const lightGeo = new THREE.BoxGeometry(1, 2.4, 3);
+  // Car bodies: a side profile (x = length, y = height) extruded across the car's width,
+  // plus a slightly wider "greenhouse" for the windows. Three shapes for variety.
+  const PROFILES = {
+    sedan: { body: [[-13,3.2],[-13,7.2],[-11,8.3],[-7,8.7],[-4.4,12.6],[3.4,12.6],[7,8.9],[12.4,8.1],[13,6.4],[13,3.2]],
+             glass: [[-6.5,8.8],[-4.2,12.2],[3.2,12.2],[6.4,9]] },
+    suv:   { body: [[-13,3.4],[-13,10.2],[-12.2,13.8],[6,13.8],[8.6,9.6],[12.8,8.8],[13,6],[13,3.4]],
+             glass: [[-11.9,9.8],[-11.4,13.3],[5.7,13.3],[7.9,9.8]] },
+    hatch: { body: [[-12,3.2],[-12,10.6],[-10.8,12.6],[2.2,12.6],[6.4,8.8],[12,8],[12.6,6.2],[12.6,3.2]],
+             glass: [[-11,9.4],[-10.2,12.2],[2,12.2],[5.6,9]] },
+  };
+  const shapeOf = pts => { const s = new THREE.Shape(); pts.forEach(([x, y], i) => i ? s.lineTo(x, y) : s.moveTo(x, y)); s.closePath(); return s; };
+  const GEO = {};
+  for (const [k, p] of Object.entries(PROFILES)){
+    const body = new THREE.ExtrudeGeometry(shapeOf(p.body), { depth: 11, bevelEnabled: true, bevelThickness: .7, bevelSize: .6, bevelSegments: 2 });
+    body.translate(0, 0, -5.5);
+    // glass: a touch bigger than its window outline so it sits proud of the body
+    const gpts = p.glass.map(([x, y]) => [x * 1.025, (y - 11) * 1.03 + 11]);
+    const glassG = new THREE.ExtrudeGeometry(shapeOf(gpts), { depth: 12.7, bevelEnabled: false }); glassG.translate(0, 0, -6.35);
+    GEO[k] = { body, glass: glassG, len: Math.max(...p.body.map(q => q[0])) };
+  }
+  const TYPES = ['sedan', 'sedan', 'suv', 'hatch'];
+  const glass = new THREE.MeshStandardMaterial({ color: 0x1f2b33, roughness: .12, metalness: .55 });
+  const lightGeo = new THREE.BoxGeometry(.8, 1.8, 3.2);
+  // all wheels in one instanced mesh, moved with their cars each frame
+  const wheelGeo = new THREE.CylinderGeometry(3.3, 3.3, 2.2, 14); wheelGeo.rotateX(Math.PI / 2);
+  const WHEEL_SPOTS = [[8.4, 6.1], [8.4, -6.1], [-8.6, 6.1], [-8.6, -6.1]];
   const headMat = new THREE.MeshBasicMaterial({ color: 0xfff6d5 }), tailMat = new THREE.MeshBasicMaterial({ color: 0xd62828 });
-  const blobGeo = new THREE.PlaneGeometry(30, 17), blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .22, depthWrite: false });
+  const blobTex = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 32; const g = c.getContext('2d');
+    g.filter = 'blur(4px)'; g.fillStyle = '#000'; g.beginPath(); g.roundRect(8, 7, 48, 18, 8); g.fill(); return new THREE.CanvasTexture(c); })();
+  const blobGeo = new THREE.PlaneGeometry(34, 19), blobMat = new THREE.MeshBasicMaterial({ map: blobTex, color: 0x000000, transparent: true, opacity: .45, depthWrite: false });
   const beamTex = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 64; const g = c.getContext('2d');
     const r = g.createRadialGradient(8, 32, 0, 8, 32, 60); r.addColorStop(0, 'rgba(255,245,210,.95)'); r.addColorStop(1, 'rgba(255,240,200,0)');
     g.fillStyle = r; g.beginPath(); g.moveTo(0, 26); g.lineTo(64, 4); g.lineTo(64, 60); g.lineTo(0, 38); g.fill(); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
@@ -51,12 +75,13 @@ export function createTraffic(scene, M, { X, Z, mobile }){
     do { e = pick(edges); tries++; } while (used.has(e) && tries < 50);
     used.add(e);
     const g = new THREE.Group();
-    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: CAR_COLOURS[k % CAR_COLOURS.length], roughness: .35, metalness: .25 }));
-    body.position.y = 4.6; g.add(body);
-    const cabin = new THREE.Mesh(cabinGeo, glass); cabin.position.set(-1, 11.8, 0); g.add(cabin);
-    [-4, 4].forEach(z => {
-      const h = new THREE.Mesh(lightGeo, headMat); h.position.set(13.2, 4.6, z); g.add(h);
-      const t = new THREE.Mesh(lightGeo, tailMat); t.position.set(-13.2, 4.6, z); g.add(t);
+    const type = TYPES[k % TYPES.length], geo = GEO[type];
+    const paint = new THREE.MeshStandardMaterial({ color: CAR_COLOURS[k % CAR_COLOURS.length], roughness: .28, metalness: .45 });
+    const body = new THREE.Mesh(geo.body, paint); g.add(body);
+    const win = new THREE.Mesh(geo.glass, glass); g.add(win);
+    [-4.2, 4.2].forEach(z => {
+      const h = new THREE.Mesh(lightGeo, headMat); h.position.set(geo.len + .5, 6.4, z); g.add(h);
+      const t = new THREE.Mesh(lightGeo, tailMat); t.position.set(-13.4, 7, z); g.add(t);
     });
     // Shadows are rendered once for the static town, so moving things carry a soft blob instead.
     const beam = new THREE.Mesh(beamGeo, beamMat); beam.visible = false; g.add(beam); g.userData.beam = beam;
@@ -66,6 +91,13 @@ export function createTraffic(scene, M, { X, Z, mobile }){
     const car = { from: a, to: b, len: Math.hypot(b.x - a.x, b.y - a.y), t: rand(60, 380), speed: 0, max: rand(70, 100), wait: 0, g, x: 0, y: 0, dx: 0, dy: 0, yaw: null };
     place(car); car.g.position.set(X(car.x), 3.2, Z(car.y));
     cars.push(car);
+  }
+  const wheels = new THREE.InstancedMesh(wheelGeo, new THREE.MeshStandardMaterial({ color: 0x161616, roughness: .9 }), cars.length * 4);
+  scene.add(wheels);
+  const wLocal = WHEEL_SPOTS.map(([x, z]) => new THREE.Matrix4().makeTranslation(x, 3.3, z)), wTmp = new THREE.Matrix4();
+  function syncWheels(){
+    cars.forEach((c, i) => { c.g.updateMatrix(); wLocal.forEach((m, j) => wheels.setMatrixAt(i * 4 + j, wTmp.multiplyMatrices(c.g.matrix, m))); });
+    wheels.instanceMatrix.needsUpdate = true;
   }
   function place(c){
     c.dx = (c.to.x - c.from.x) / c.len; c.dy = (c.to.y - c.from.y) / c.len;
@@ -177,7 +209,7 @@ export function createTraffic(scene, M, { X, Z, mobile }){
 
   return {
     setNight(lit){ beamMat.opacity = .7 * lit; cars.forEach(c => { c.g.userData.beam.visible = lit > .01; }); },
-    update(dt, rider){ if (!dt) return; updateCars(Math.min(dt, .05), rider); updatePeople(Math.min(dt, .05)); },
+    update(dt, rider){ if (!dt) return; updateCars(Math.min(dt, .05), rider); syncWheels(); updatePeople(Math.min(dt, .05)); },
     weaveFor,
     cars, people,
   };

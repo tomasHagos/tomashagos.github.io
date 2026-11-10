@@ -160,7 +160,7 @@ function draw(dt){
   if (TINT[kind]){ ctx.fillStyle = TINT[kind]; ctx.fillRect(0, 0, cw, ch); }
   // Night over the 2D map (the 3D view lights its own scene, so it skips this).
   const day = window.PortfolioSun ? PortfolioSun.daylight() : 1;
-  if (day < 1 && !document.body.classList.contains('view-3d')){
+  if (day < 1 && (!document.body.classList.contains('view-3d') || document.documentElement.classList.contains('boot-3d'))){
     ctx.fillStyle = `rgba(8,16,42,${(.64 * (1 - day)).toFixed(3)})`; ctx.fillRect(0, 0, cw, ch);
     if (day < .95 && day > .05){ ctx.fillStyle = `rgba(255,140,80,${(.18 * 4 * day * (1 - day)).toFixed(3)})`; ctx.fillRect(0, 0, cw, ch); }
   }
