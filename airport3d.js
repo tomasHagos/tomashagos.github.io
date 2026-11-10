@@ -21,9 +21,9 @@ const RWY = { x0: 520, x1: 1900, y: -330, w: 60 };     // runway, heading east
 const TWY = { y: -250, w: 26 };                         // parallel taxiway
 const APRON = { x0: 1040, x1: 1360, y0: -232, y1: -128 };
 
-export function createAirport(scene, { X, Z, mat, solid, moving }){
+export function createAirport(scene, { X, Z, mat, solid, moving, worldUV }){
   const g = new THREE.Group(); scene.add(g);
-  const box = (w, h, d, m, x, y, z, cast = true) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); b.castShadow = cast; b.receiveShadow = true; g.add(b); return b; };
+  const box = (w, h, d, m, x, y, z, cast = true) => { const geo = new THREE.BoxGeometry(w, h, d); if (m.map && worldUV) worldUV(geo, x, z); const b = new THREE.Mesh(geo, m); b.position.set(x, y, z); b.castShadow = cast; b.receiveShadow = true; g.add(b); return b; };
   const flat = (x0, x1, y0, y1, m, h) => box(Math.abs(x1 - x0), .6, Math.abs(y1 - y0), m, X((x0 + x1) / 2), h, Z((y0 + y1) / 2), false);
 
   /* ---------- ground ---------- */

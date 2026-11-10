@@ -10,3 +10,10 @@ esbuild examples/jsm/controls/MapControls.js  --format=esm --minify --legal-comm
 ```
 
 `index.html` maps the bare import `three` to `three.min.js`. Licence: MIT (see LICENSE).
+
+Also vendored (same build steps):
+
+```sh
+esbuild examples/jsm/objects/Sky.js --format=esm --minify --legal-comments=eof --outfile=addons/objects/Sky.min.js
+esbuild examples/jsm/utils/BufferGeometryUtils.js --format=esm --minify --legal-comments=eof --outfile=addons/utils/BufferGeometryUtils.min.js
+```
