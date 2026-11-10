@@ -140,6 +140,12 @@ const WALLS = [0xf3ede2, 0xe9e1d3, 0xdfe6ea].map(c => new THREE.Color(c));
 const prism = new THREE.CylinderGeometry(1, 1, 1, 3); prism.rotateZ(Math.PI / 2);
 const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: .9 }), M.houses.length);
 const roofs = new THREE.InstancedMesh(prism, new THREE.MeshStandardMaterial({ roughness: .8, flatShading: true }), M.houses.length);
+// details: two windows front and back, a front door, a chimney on most houses
+const winMat = new THREE.MeshBasicMaterial({ color: 0x3c4f60 });          // dark glass by day, warm glow at night
+const houseWins = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), winMat, M.houses.length * 4);
+const doors = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), solid(0x6b4a33), M.houses.length);
+const chimneys = new THREE.InstancedMesh(new THREE.BoxGeometry(5, 14, 5), solid(0x8a5a44), M.houses.length);
+const HOUSE_H = i => 26 + (i * 7) % 18;
 {
   const o = new THREE.Object3D();
   M.houses.forEach((hs, i) => {
@@ -147,9 +153,25 @@ const roofs = new THREE.InstancedMesh(prism, new THREE.MeshStandardMaterial({ ro
     o.position.set(cx, h / 2, cz); o.rotation.set(0, 0, 0); o.scale.set(hs.w - 4, h, hs.h - 4); o.updateMatrix(); walls.setMatrixAt(i, o.matrix);
     walls.setColorAt(i, WALLS[i % 3]);
     const horiz = hs.w >= hs.h, len = horiz ? hs.w : hs.h, span = horiz ? hs.h : hs.w;
-    o.position.set(cx, h + span * .28, cz); o.rotation.set(0, horiz ? 0 : Math.PI / 2, 0); o.scale.set(len, span * .62, span * .62); o.updateMatrix(); roofs.setMatrixAt(i, o.matrix);
+    // roof with overhanging eaves
+    o.position.set(cx, h + span * .29, cz); o.rotation.set(0, horiz ? 0 : Math.PI / 2, 0); o.scale.set(len + 5, span * .7, span * .7); o.updateMatrix(); roofs.setMatrixAt(i, o.matrix);
+    // windows (front/back long sides) and a door on the front
+    const fw = (horiz ? hs.h : hs.w) - 4, along = horiz ? hs.w : hs.h;
+    let n = 0;
+    [-1, 1].forEach(side => [-1, 1].forEach(slot => {
+      const off = side * (fw / 2 + .35), a = slot * along * .24;
+      if (horiz){ o.position.set(cx + a, h * .58, cz + off); o.scale.set(7, 7, .6); } else { o.position.set(cx + off, h * .58, cz + a); o.scale.set(.6, 7, 7); }
+      o.rotation.set(0, 0, 0); o.updateMatrix(); houseWins.setMatrixAt(i * 4 + n++, o.matrix);
+    }));
+    if (horiz){ o.position.set(cx, 6, cz + fw / 2 + .35); o.scale.set(5.5, 12, .7); } else { o.position.set(cx + fw / 2 + .35, 6, cz); o.scale.set(.7, 12, 5.5); }
+    o.updateMatrix(); doors.setMatrixAt(i, o.matrix);
+    // chimney through one side of the roof (skip every third house)
+    if (i % 3 !== 2){ o.scale.set(1, 1, 1); if (horiz) o.position.set(cx + len * .28, h + span * .42, cz - span * .14); else o.position.set(cx - span * .14, h + span * .42, cz + len * .28); }
+    else { o.scale.set(0, 0, 0); o.position.set(cx, -50, cz); }
+    o.updateMatrix(); chimneys.setMatrixAt(i, o.matrix);
   });
-  [walls, roofs].forEach(m => { m.castShadow = m.receiveShadow = true; scene.add(m); });
+  [walls, roofs, chimneys].forEach(m => { m.castShadow = m.receiveShadow = true; scene.add(m); });
+  scene.add(houseWins, doors);
 }
 
 /* ---------------- landmarks ---------------- */
@@ -158,14 +180,32 @@ const centre = r => ({ cx: X(r.x + r.w / 2), cz: Z(r.y + r.h / 2) });
 const glass = solid(0x9ecae1, { roughness: .15, metalness: .3 });
 const roofCaps = [];                                     // turn white in snow
 function cap(r, y, color){ const m = box(r.w + 4, 4, r.h + 4, solid(color), centre(r).cx, y + 2, centre(r).cz); m.material = m.material.clone(); m.userData.base = color; roofCaps.push(m); return m; }
+const lobbyGlass = solid(0x51707f, { roughness: .1, metalness: .5 });
 function tower(r, h, wall, roof, windows = true){
   const { cx, cz } = centre(r);
   box(r.w, h, r.h, solid(wall), cx, h / 2, cz);
   cap(r, h, roof);
-  if (windows) for (let y = 14; y < h - 8; y += 18){
-    box(r.w + .8, 7, r.h * .86, glass, cx, y, cz, false);
-    box(r.w * .86, 7, r.h + .8, glass, cx, y, cz, false);
+  if (!windows) return;
+  // glass lobby at street level, with an entrance canopy on the south side
+  box(r.w + .6, 10, r.h * .9, lobbyGlass, cx, 5.5, cz, false);
+  box(r.w * .9, 10, r.h + .6, lobbyGlass, cx, 5.5, cz, false);
+  box(Math.min(40, r.w * .4), 2, 12, solid(0x2f3338), cx, 12, cz + r.h / 2 + 6);
+  // window bands
+  for (let y = 22; y < h - 8; y += 18){
+    box(r.w + .8, 8, r.h * .9, glass, cx, y, cz, false);
+    box(r.w * .9, 8, r.h + .8, glass, cx, y, cz, false);
   }
+  // vertical frames (mullions) across every face
+  const fins = [], STEP = 13;
+  for (let x = -r.w / 2 + STEP; x < r.w / 2 - 4; x += STEP) [-1, 1].forEach(s => fins.push([cx + x, cz + s * (r.h / 2 + .7), 1.6, 1.4]));
+  for (let z = -r.h / 2 + STEP; z < r.h / 2 - 4; z += STEP) [-1, 1].forEach(s => fins.push([cx + s * (r.w / 2 + .7), cz + z, 1.4, 1.6]));
+  const finMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), solid(new THREE.Color(wall).multiplyScalar(.82).getHex()), fins.length);
+  const o = new THREE.Object3D();
+  fins.forEach(([x, z, w, d], i) => { o.position.set(x, 12 + (h - 12) / 2, z); o.scale.set(w, h - 14, d); o.updateMatrix(); finMesh.setMatrixAt(i, o.matrix); });
+  scene.add(finMesh);
+  // rooftop machinery
+  box(Math.min(26, r.w * .3), 9, Math.min(22, r.h * .3), solid(0x9aa0a6), cx - r.w * .2, h + 8.5, cz - r.h * .15);
+  [[.22, .2], [.3, -.22], [-.05, .28]].forEach(([fx, fz]) => box(9, 5, 9, solid(0xc5c9cc), cx + r.w * fx, h + 6.5, cz + r.h * fz));
 }
 const TOP = {};                                          // roof height per stop (labels, lights)
 tower(LM.priceline, 230, 0xb9b2c9, 0x968daa);
@@ -338,6 +378,7 @@ const daySky = new THREE.Color(0xa9d4f0), dayHemi = new THREE.Color(0xdff2ff), d
 const NIGHT_SKY = new THREE.Color(0x0b1426), DUSK = new THREE.Color(0xf0926a), MOON = new THREE.Color(0x9db4ff), SUNC = new THREE.Color(0xfff1dc);
 scene.background = new THREE.Color(); 
 let lastDay = -1;
+const WIN_DAY = new THREE.Color(0x3c4f60), WIN_NIGHT = new THREE.Color(0xffd37a);
 // street lamps on every corner of every intersection
 const LAMP_SPOTS = [];
 XS.forEach(x => YS.forEach(y => [[-1, -1], [1, 1]].forEach(([sx, sy]) => LAMP_SPOTS.push([X(x + sx * 38), Z(y + sy * 38)]))));
@@ -359,19 +400,7 @@ const pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(90, 90), poolMat, 
   LAMP_SPOTS.forEach(([x, z], i) => { o.position.set(x, 4.5, z); o.updateMatrix(); pools.setMatrixAt(i, o.matrix); }); pools.renderOrder = 2; scene.add(pools); }
 const haloMat = new THREE.SpriteMaterial({ map: GLOW, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
 const halos = LAMP_SPOTS.map(([x, z]) => { const s = new THREE.Sprite(haloMat); s.position.set(x, 31, z); s.scale.set(26, 26, 1); scene.add(s); return s; });
-// lit windows on houses (two per house, facing the street side)
-const winMat = new THREE.MeshBasicMaterial({ color: 0xffd37a, transparent: true, opacity: 0 });
-const houseWins = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), winMat, M.houses.length * 2);
-{ const o = new THREE.Object3D();
-  M.houses.forEach((hs, i) => {
-    const h = 26 + (i * 7) % 18, cx = X(hs.x + hs.w / 2), cz = Z(hs.y + hs.h / 2), horiz = hs.w >= hs.h;
-    [-1, 1].forEach((s, k) => {
-      if (horiz){ o.position.set(cx + s * hs.w * .2, h * .5, cz + (hs.h - 4) / 2 + .4); o.scale.set(7, 7, .6); }
-      else { o.position.set(cx + (hs.w - 4) / 2 + .4, h * .5, cz + s * hs.h * .2); o.scale.set(.6, 7, 7); }
-      o.updateMatrix(); houseWins.setMatrixAt(i * 2 + k, o.matrix);
-    });
-  });
-  scene.add(houseWins); }
+// (house windows are built with the houses; applyDaylight makes them glow at night)
 // stars
 const starGeo = new THREE.BufferGeometry(), sp = [];
 for (let i = 0; i < 700; i++){ const a = Math.random() * Math.PI * 2, e = .08 + Math.random() * 1.2, r = 4200; sp.push(Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r); }
@@ -393,7 +422,7 @@ function applyDaylight(day){
   renderer.toneMappingExposure = .82 + .23 * day;
   const lit = Math.max(0, Math.min(1, (night - .25) / .5));   // lights switch on around dusk
   glass.emissive = glass.emissive || new THREE.Color(); glass.emissive.setHex(0xffc56e); glass.emissiveIntensity = .85 * lit;
-  winMat.opacity = .95 * lit; houseWins.visible = lit > .01;
+  winMat.color.copy(WIN_DAY).lerp(WIN_NIGHT, lit);
   poolMat.opacity = .55 * lit; haloMat.opacity = .9 * lit; pools.visible = lit > .01; halos.forEach(h => { h.visible = lit > .01; });
   lampHeads.material.color.setHex(lit > .01 ? 0xffe6a8 : 0xd9dde2);
   starMat.opacity = Math.max(0, night - .35) / .65;
@@ -531,7 +560,17 @@ function frame(dt, now){
   // a new ride, or arriving somewhere, puts the camera back in follow mode
   const key = r.rideId + '|' + r.stop;
   if (key !== lastRide && (r.riding || r.stop)){ if (lastRide !== '') follow = true; lastRide = key; }
-  if (intro.active){
+  if (reveal){
+    // tilt from the 2D-matching top-down view into the 3D overview
+    const k = Math.min(1, (now - reveal.t0) / reveal.ms), e = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    if (now >= reveal.t0){
+      controls.target.lerpVectors(reveal.fromT, reveal.toT, e);
+      camera.position.lerpVectors(reveal.fromP, reveal.toP, e);
+    }
+    camera.lookAt(controls.target);
+    if (k >= 1){ reveal = null; controls.update(); }
+    dirty = true;
+  } else if (intro.active){
     intro.update(dt, now);                 // the intro drives the camera until it ends
     dirty = true;
   } else if (tween){
@@ -548,7 +587,7 @@ function frame(dt, now){
     camera.position.lerp(p.pos, kp);
     if (before.distanceToSquared(camera.position) > 1e-4) dirty = true;
   }
-  if (!intro.active) controls.update();
+  if (!intro.active && !reveal) controls.update();
   updateViewOffset();
   // Christmas bulbs blink in two groups, ~8 times a second at most
   if (bulbsA.length && now - lastTwinkle > 120){
@@ -557,9 +596,44 @@ function frame(dt, now){
   }
   if (traffic){ traffic.update(dt, r.riding ? r : { x: r.x, y: r.y }); dirty = true; }
   airport.update(dt);   // the town is always moving now
-  if (dirty){ dirty = false; renderer.render(scene, camera); if (booting){ booting = false; document.documentElement.classList.remove('boot-3d'); } }
+  if (booting) startReveal(now);
+  if (dirty){ dirty = false; renderer.render(scene, camera); if (booting){ booting = false; fadeIn(); } }
 }
 let booting = document.documentElement.classList.contains('boot-3d');
+
+/* ---------------- 2D -> 3D hand-off ----------------
+   The 2D map is on screen while this module loads. For the first 3D frame,
+   put the camera straight above the same spot at the height that shows the
+   same area, so the 3D town lines up with the 2D map. Fade it in over the
+   2D map, then tilt down into the usual 3D overview. */
+let reveal = null;
+function startReveal(now){
+  if (intro.active) return;                                  // the intro has its own opening shot
+  const r = M.rider(), panelOpen = document.getElementById('panel').classList.contains('open');
+  if (r.riding || panelOpen) return;                         // they've already started: just follow
+  // match the 3D picture offset to the side panel / route bar right away
+  const ins = M.panelInset(), navLeft = !mobile ? 125 : 0;
+  viewOff = { x: ins.r / 2 - navLeft, y: ins.b / 2 };
+  camera.setViewOffset(innerWidth, innerHeight, viewOff.x, viewOff.y, innerWidth, innerHeight);
+  // what the 2D map shows: its viewBox is in the same map units
+  const vb = (svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);
+  if (vb.length !== 4 || !vb[2]) return;
+  const [vx, vy, vw, vh] = vb;
+  const px = innerWidth / 2 - viewOff.x, py = innerHeight / 2 - viewOff.y;   // screen point on the 3D camera's axis
+  const P = new THREE.Vector3(X(vx + px * vw / innerWidth), 0, Z(vy + py * vh / innerHeight));
+  const h = (vh / 2) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  camera.position.set(P.x, h, P.z + .01);                    // north up, like the 2D map
+  controls.target.copy(P);
+  camera.lookAt(P);
+  reveal = { t0: now + 650, ms: 1700, fromT: P.clone(), fromP: camera.position.clone(),
+             toT: OVERVIEW.target.clone(), toP: OVERVIEW.target.clone().add(OVERVIEW.offset) };
+}
+function fadeIn(){
+  const html = document.documentElement;
+  html.classList.remove('boot-3d');                          // canvas fades to full opacity (CSS transition)
+  html.classList.add('fading-3d');
+  setTimeout(() => html.classList.remove('fading-3d'), 600); // 2D map hides once 3D fully covers it
+}
 M.onFrame(frame);
 renderer.shadowMap.needsUpdate = true;
 

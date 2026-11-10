@@ -180,9 +180,7 @@ body.view-3d #map{visibility:hidden}
   body:has(.intro:not(.hide)) #tourBtn, body:has(.intro-skip) #tourBtn{display:none}
 }
 
-/* ---------- boot: hide the 2D map until the first 3D frame (sun.js adds html.boot-3d) ---------- */
-html.boot-3d body{background:#a9d4f0}
-html.boot-3d.boot-night body{background:#0b1426}
-html.boot-3d #map, html.boot-3d #wx{visibility:hidden}
-html.boot-3d body::after{content:"Loading the town…";position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);font:600 14px var(--font);color:var(--ink);background:var(--paper);border:2px solid var(--ink);border-radius:999px;padding:8px 16px;box-shadow:3px 3px 0 var(--ink);z-index:0;animation:bootfade .6s ease-out .6s both}
-@keyframes bootfade{from{opacity:0}to{opacity:1}}
+/* ---------- boot: show the 2D map while 3D loads, then fade 3D in over it (sun.js adds html.boot-3d) ---------- */
+html.boot-3d body.view-3d #map, html.fading-3d body.view-3d #map{visibility:visible}
+html.boot-3d #scene3d{opacity:0}
+#scene3d{transition:opacity .55s ease}
