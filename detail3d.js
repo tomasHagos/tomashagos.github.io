@@ -238,20 +238,23 @@ function water(c){
   c.touch();
 }
 
-/* ---------- clouds drifting along the horizon ---------- */
+/* ---------- clouds, high and far off ----------
+   They sit well above the tallest tower and a long way out, so from street level
+   they are up in the sky (not hanging at eye level over the rooftops), and from
+   the overview they stay near the horizon instead of over the town. */
 function clouds(c, add){
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128; const g = cv.getContext('2d'), R = rng(61);
   for (let k = 0; k < 26; k++){
     const x = 50 + R() * 156, y = 62 + (R() - .5) * 34, r = 16 + R() * 30, gr = g.createRadialGradient(x, y, 0, x, y, r);
     gr.addColorStop(0, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
   }
-  g.globalCompositeOperation = 'source-atop'; const sh = g.createLinearGradient(0, 40, 0, 110); sh.addColorStop(0, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(120,135,160,.5)'); g.fillStyle = sh; g.fillRect(0, 0, 256, 128);   // grey bellies
+  g.globalCompositeOperation = 'source-atop'; const sh = g.createLinearGradient(0, 40, 0, 110); sh.addColorStop(0, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(150,163,185,.35)'); g.fillStyle = sh; g.fillRect(0, 0, 256, 128);   // grey bellies
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
   const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity: 0 });
   const group = new THREE.Group(), N = c.mobile ? 9 : 14;
   for (let k = 0; k < N; k++){
-    const s = new THREE.Sprite(mat), a = k / N * 6.2832 + R() * .3, rad = 2300 + R() * 500, w = 900 + R() * 800;
-    s.position.set(Math.cos(a) * rad, 330 + R() * 520, Math.sin(a) * rad); s.scale.set(w, w * .42, 1); group.add(s);
+    const s = new THREE.Sprite(mat), a = k / N * 6.2832 + R() * .3, rad = 4200 + R() * 900, w = 1700 + R() * 1500;
+    s.position.set(Math.cos(a) * rad, 1500 + R() * 1300, Math.sin(a) * rad); s.scale.set(w, w * .42, 1); group.add(s);
   }
   const DAY = new THREE.Color(0xffffff), NIGHT = new THREE.Color(0x27324d), DUSK = new THREE.Color(0xffb38a);
   const light = (lit, day) => { const dusk = 4 * day * (1 - day); mat.opacity = .25 + .65 * day; mat.color.copy(NIGHT).lerp(DAY, day).lerp(DUSK, dusk * .45); };
