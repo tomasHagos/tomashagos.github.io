@@ -9,9 +9,15 @@
  *   Phones/browsers without WebGL fall back to 2D automatically.
  */
 import * as THREE from 'three';
-import { MapControls } from 'three/addons/controls/MapControls.js';
+import { MapControls } from 'three/addons/controls/MapControls.min.js';
 import { createTraffic } from './traffic3d.js';
 import { createIntro } from './intro3d.js';
+import { createAirport, AIRPORT } from './airport3d.js';
+import { Sky } from 'three/addons/objects/Sky.min.js';
+import { makeTextures, texturedMaterial, worldUV } from './textures3d.js';
+import { createHouses, gableRoof } from './houses3d.js';
+import { createCarKit, createWheels } from './cars3d.js';
+import { createAdminBuilding } from './uofm3d.js';
 
 const M = window.PortfolioMap;
 if (!M) throw new Error('three3d.js needs app.js');
@@ -37,15 +43,16 @@ const overviewBtn = document.getElementById('overviewBtn');
 controlsBar.insertBefore(ctlRow, overviewBtn);
 ctlRow.append(viewBtn, overviewBtn);
 
+const DETAIL0 = params.get('detail') === '0';           // no second pass: build everything at full quality now
 /* ---------------- renderer, scene, camera ---------------- */
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, mobile ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;           // with shadow.radius for soft edges
 renderer.shadowMap.autoUpdate = false;                 // static town: redraw shadows only when needed
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = .36;                     // set by applyDaylight
 renderer.domElement.id = 'scene3d';
 renderer.domElement.setAttribute('aria-label', svg.getAttribute('aria-label') || 'Map');
 svg.after(renderer.domElement);
@@ -54,20 +61,43 @@ const scene = new THREE.Scene();
 // Portrait phones see a narrow slice horizontally, so they get a wider lens.
 const fovFor = () => innerWidth < innerHeight ? 58 : 40;
 const camera = new THREE.PerspectiveCamera(fovFor(), innerWidth / innerHeight, 5, 9000);
-const hemi = new THREE.HemisphereLight(0xdff2ff, 0x6f8f4f, 1.1);
+const hemi = new THREE.HemisphereLight(0xdff2ff, 0x6f8f4f, .3);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff1dc, 2.2);
+const sun = new THREE.DirectionalLight(0xfff1dc, 5);
 sun.position.set(-900, 1400, -500);
 sun.castShadow = true;
 Object.assign(sun.shadow.camera, { left: -1500, right: 1500, top: 1100, bottom: -1100, near: 100, far: 4000 });
 sun.shadow.mapSize.set(mobile ? 2048 : 4096, mobile ? 2048 : 4096);
-sun.shadow.bias = -0.0005;
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = .8; sun.shadow.radius = mobile ? 2 : 3.5;
 scene.add(sun);
+
+/* ---------------- sky (physically based) + reflections from it ---------------- */
+const sky = new Sky(); sky.scale.setScalar(5200); scene.add(sky);
+const SU = sky.material.uniforms;
+SU.turbidity.value = 2.2; SU.rayleigh.value = 2.2; SU.mieCoefficient.value = .004; SU.mieDirectionalG.value = .8;
+const SUN_DIR = sun.position.clone().normalize();
+function skySun(elevDeg){                               // same compass direction as the light, any height
+  const az = Math.atan2(SUN_DIR.x, SUN_DIR.z), el = THREE.MathUtils.degToRad(elevDeg);
+  SU.sunPosition.value.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
+}
+skySun(32);
+// Reflections of the sky, used only on shiny things (glass, car paint): lighting every
+// surface with it roughly doubled the drawing cost for little visible gain.
+let ENV = null;
+{ const pmrem = new THREE.PMREMGenerator(renderer), envScene = new THREE.Scene(); envScene.add(sky.clone());
+  ENV = pmrem.fromScene(envScene, .02).texture; pmrem.dispose(); }
+const shiny = [];
+let envNow = .9;                                        // follows day/night (applyDaylight)
+const reflect = m => { m.envMap = ENV; m.envMapIntensity = envNow; shiny.push(m); return m; };
+
+/* ---------------- surface textures ---------------- */
+// Small, flat versions first (quick to paint); detail3d.js repaints them sharper later.
+const TEX = makeTextures(mobile, DETAIL0 ? {} : { size: mobile ? 128 : 256, normals: false });
 
 /* ---------------- palettes (summer / snowy) ---------------- */
 const PAL = {
-  summer: { sky: 0xa9d4f0, ground: 0x86b862, block: 0x9fcb7a, park: 0x8cc266, side: 0xd8d1c1, bank: 0xd9c99a, water: 0x4f93bd, hemiSky: 0xdff2ff, hemiGround: 0x6f8f4f },
-  snowy:  { sky: 0xcfdbe6, ground: 0xe9eef3, block: 0xf4f7fa, park: 0xedf2f6, side: 0xdde2e6, bank: 0xdfe6ec, water: 0x9cc4dc, hemiSky: 0xe8f0f8, hemiGround: 0x9aa6b2 },
+  summer: { sky: 0xa9c3d8, ground: 0xe8f0dc, block: 0xffffff, park: 0xf2fae8, side: 0xffffff, bank: 0xd9c99a, water: 0x4f86a8, hemiSky: 0xdff2ff, hemiGround: 0x6f8f4f },
+  snowy:  { sky: 0xc6d4e2, ground: 0xffffff, block: 0xffffff, park: 0xffffff, side: 0xe9eef3, bank: 0xdfe6ec, water: 0x9cc4dc, hemiSky: 0xe8f0f8, hemiGround: 0x9aa6b2 },
 };
 const SNOW = new THREE.Color(0xf4f8fb);
 const mats = {};
@@ -76,14 +106,19 @@ const solid = (c, o) => mat('c' + c.toString(16) + JSON.stringify(o || {}), c, o
 const pickables = [];
 
 function box(w, h, d, material, x, y, z, shadow = true){
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+  const geo = new THREE.BoxGeometry(w, h, d);
+  if (material.map) worldUV(geo, x, z);                 // textured: 1 UV unit = 1 map unit
+  const m = new THREE.Mesh(geo, material);
   m.position.set(x, y, z); m.castShadow = shadow; m.receiveShadow = true; scene.add(m); return m;
 }
 const flat = (w, d, material, x, z, y) => box(w, .6, d, material, x, y, z, false);
 
 /* ---------------- ground, blocks, river, roads ---------------- */
 const CURB = 40;
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), mat('ground', 0));
+// grass (swapped for snow in winter), concrete sidewalks, asphalt roads
+['ground', 'block', 'park'].forEach(k => { mats[k] = texturedMaterial(TEX.grass); });
+mats.side = texturedMaterial(TEX.concrete, { roughness: .85 });
+const ground = new THREE.Mesh(worldUV(new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2)).rotateX(Math.PI / 2), mats.ground);
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 for (let j = 0; j < YS.length - 1; j++) for (let i = 0; i < XS.length - 1; i++){
   const x0 = XS[i] + CURB, x1 = XS[i + 1] - CURB, y0 = YS[j] + CURB, y1 = YS[j + 1] - CURB;
@@ -98,10 +133,11 @@ function ribbon(off, material, y){
   const m = new THREE.Mesh(new THREE.ShapeGeometry(shape), material);
   m.rotation.x = Math.PI / 2; m.position.y = y; m.receiveShadow = true; scene.add(m);
 }
-ribbon(14, mat('bank', 0), 1.2);
-ribbon(0, mat('water', 0, { roughness: .2, metalness: .1 }), 1.6);
+// (the flat shape faces down after the turn, so draw both sides or the river vanishes from above)
+ribbon(14, mat('bank', 0, { side: THREE.DoubleSide }), 1.2);
+ribbon(0, mat('water', 0, { roughness: .2, metalness: .1, side: THREE.DoubleSide }), 1.6);
 
-const asphalt = solid(0x4c5259), stripe = solid(0xf2d16b), side = mat('side', 0);
+const asphalt = texturedMaterial(TEX.asphalt, { roughness: .95 }), stripe = solid(0xe9c84e, { roughness: .7 }), side = mats.side;
 const x0 = XS[0], x1 = XS[XS.length - 1], y0 = YS[0], y1 = YS[YS.length - 1];
 YS.forEach(y => { flat(x1 - x0 + CURB * 2, CURB * 2, side, X((x0 + x1) / 2), Z(y), 2); flat(x1 - x0 + ROAD * 2, ROAD * 2, asphalt, X((x0 + x1) / 2), Z(y), 3); });
 XS.forEach(x => { flat(CURB * 2, y1 - y0 + CURB * 2, side, X(x), Z((y0 + y1) / 2), 2); flat(ROAD * 2, y1 - y0 + ROAD * 2, asphalt, X(x), Z((y0 + y1) / 2), 3); });
@@ -118,52 +154,79 @@ XS.forEach(x => { flat(CURB * 2, y1 - y0 + CURB * 2, side, X(x), Z((y0 + y1) / 2
 YS.forEach(y => { const xr = M.riverX(y), half = M.riverW(y) + 26; [-1, 1].forEach(s => box(half * 2, 10, 4, solid(0x8a7f6e), X(xr), 8, Z(y) + s * (CURB - 2))); });
 
 /* ---------------- trees (instanced) ---------------- */
-const trees = M.trees.filter(t => t.g.isConnected);   // effects.js clears some for the Christmas tree
-const GREENS = [0x3f7a35, 0x4f8a3c, 0x5c9a45, 0x2f6b33, 0x6aa64e].map(c => new THREE.Color(c));
-const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(2.2, 3, 1, 6), solid(0x6b4f3a), trees.length);
-const leaves = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ roughness: .85, flatShading: true }), trees.length);
+const inAirport = t => t.x > AIRPORT.x0 - 10 && t.x < AIRPORT.x1 + 10 && t.y > AIRPORT.y0 - 10 && t.y < AIRPORT.y1 + 10;
+const trees = M.trees.filter(t => t.g.isConnected && !inAirport(t));   // effects.js clears some for the Christmas tree; the airport needs open land
+// Each tree: a tapered trunk and a canopy of several soft, slightly lumpy blobs,
+// darker underneath. All canopies share one instanced mesh (per-blob colour).
+const BLOBS = 3;
+const GREENS = [0x355f26, 0x3f6d2c, 0x4a7a33, 0x2f5622, 0x557f37].map(c => new THREE.Color(c));
+const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(1.5, 2.6, 1, 7), new THREE.MeshStandardMaterial({ color: 0x5a4433, roughness: 1 }), trees.length);
+const blobGeo = (() => {
+  const g = new THREE.IcosahedronGeometry(1, 1), p = g.attributes.position, col = [];   // 80 triangles per blob: cheap, still reads as a soft canopy
+  for (let i = 0; i < p.count; i++){
+    const v = new THREE.Vector3().fromBufferAttribute(p, i), n = 1 + Math.sin(v.x * 4.1) * Math.cos(v.y * 3.7) * Math.sin(v.z * 3.3) * .12;
+    p.setXYZ(i, v.x * n, v.y * n * .9, v.z * n);
+    const shade = .72 + .36 * (v.y * .5 + .5);            // darker underneath, lighter on top
+    col.push(shade, shade, shade);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals(); return g;
+})();
+const leaves = new THREE.InstancedMesh(blobGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .85, envMapIntensity: .35 }), trees.length * BLOBS);
+const leafBase = [];
 {
-  const o = new THREE.Object3D();
+  const o = new THREE.Object3D(), R = (i, k) => { const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
   trees.forEach((t, i) => {
-    const h = t.r * 1.2;
-    o.position.set(X(t.x), h / 2, Z(t.y)); o.scale.set(1, h, 1); o.rotation.set(0, 0, 0); o.updateMatrix(); trunks.setMatrixAt(i, o.matrix);
-    o.position.set(X(t.x), h + t.r * .7, Z(t.y)); o.scale.set(t.r, t.r * 1.1, t.r); o.rotation.y = i; o.updateMatrix(); leaves.setMatrixAt(i, o.matrix);
+    const h = t.r * 1.15;
+    o.position.set(X(t.x), h / 2, Z(t.y)); o.scale.set(t.r / 9, h, t.r / 9); o.rotation.set(0, 0, 0); o.updateMatrix(); trunks.setMatrixAt(i, o.matrix);
+    for (let k = 0; k < BLOBS; k++){
+      const a = R(i, k) * Math.PI * 2, d = t.r * (k ? .38 + R(i, k + 9) * .2 : 0), s = t.r * (k ? .62 + R(i, k + 5) * .2 : .78);
+      o.position.set(X(t.x) + Math.cos(a) * d, h + t.r * (.55 + R(i, k + 3) * .35), Z(t.y) + Math.sin(a) * d);
+      o.scale.set(s, s, s); o.rotation.set(0, a, 0); o.updateMatrix(); leaves.setMatrixAt(i * BLOBS + k, o.matrix);
+      leafBase.push(GREENS[(i + k) % GREENS.length].clone().offsetHSL(0, 0, (R(i, k + 7) - .5) * .05));
+    }
   });
   [trunks, leaves].forEach(m => { m.castShadow = m.receiveShadow = true; scene.add(m); });
 }
 
-/* ---------------- houses (instanced walls + gable roofs) ---------------- */
-const ROOFS = [0xc8553d, 0x8d6e63, 0x577590, 0x9c6644, 0x6d597a, 0xb56576, 0x7a8b6f, 0xc08552].map(c => new THREE.Color(c));
-const WALLS = [0xf3ede2, 0xe9e1d3, 0xdfe6ea].map(c => new THREE.Color(c));
-const prism = new THREE.CylinderGeometry(1, 1, 1, 3); prism.rotateZ(Math.PI / 2);
-const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: .9 }), M.houses.length);
-const roofs = new THREE.InstancedMesh(prism, new THREE.MeshStandardMaterial({ roughness: .8, flatShading: true }), M.houses.length);
-{
-  const o = new THREE.Object3D();
-  M.houses.forEach((hs, i) => {
-    const h = 26 + (i * 7) % 18, cx = X(hs.x + hs.w / 2), cz = Z(hs.y + hs.h / 2);
-    o.position.set(cx, h / 2, cz); o.rotation.set(0, 0, 0); o.scale.set(hs.w - 4, h, hs.h - 4); o.updateMatrix(); walls.setMatrixAt(i, o.matrix);
-    walls.setColorAt(i, WALLS[i % 3]);
-    const horiz = hs.w >= hs.h, len = horiz ? hs.w : hs.h, span = horiz ? hs.h : hs.w;
-    o.position.set(cx, h + span * .28, cz); o.rotation.set(0, horiz ? 0 : Math.PI / 2, 0); o.scale.set(len, span * .62, span * .62); o.updateMatrix(); roofs.setMatrixAt(i, o.matrix);
-  });
-  [walls, roofs].forEach(m => { m.castShadow = m.receiveShadow = true; scene.add(m); });
-}
+/* ---------------- houses (detailed, merged: see houses3d.js) ---------------- */
+const houses = createHouses(scene, M, { X, Z, TEX, CURB });
+if (DETAIL0) houses.finish();
+reflect(houses.glass);
 
 /* ---------------- landmarks ---------------- */
 const LM = M.landmarks;
 const centre = r => ({ cx: X(r.x + r.w / 2), cz: Z(r.y + r.h / 2) });
-const glass = solid(0x9ecae1, { roughness: .15, metalness: .3 });
+const glass = reflect(new THREE.MeshStandardMaterial({ color: 0x5f8299, roughness: .05, metalness: .65, emissive: 0xffc56e, emissiveIntensity: 0 }));
 const roofCaps = [];                                     // turn white in snow
 function cap(r, y, color){ const m = box(r.w + 4, 4, r.h + 4, solid(color), centre(r).cx, y + 2, centre(r).cz); m.material = m.material.clone(); m.userData.base = color; roofCaps.push(m); return m; }
+const lobbyGlass = reflect(new THREE.MeshStandardMaterial({ color: 0x2c3e48, roughness: .04, metalness: .7 }));
+const facadeMats = {};
+const facade = c => facadeMats[c] ||= texturedMaterial(TEX.concrete, { color: c, roughness: .75 });
+const TOWERS = [];                                       // read by detail3d.js (window grids, parapets)
 function tower(r, h, wall, roof, windows = true){
   const { cx, cz } = centre(r);
-  box(r.w, h, r.h, solid(wall), cx, h / 2, cz);
-  cap(r, h, roof);
-  if (windows) for (let y = 14; y < h - 8; y += 18){
-    box(r.w + .8, 7, r.h * .86, glass, cx, y, cz, false);
-    box(r.w * .86, 7, r.h + .8, glass, cx, y, cz, false);
+  box(r.w, h, r.h, facade(wall), cx, h / 2, cz);
+  const T = { r, h, wall, windows, cap: cap(r, h, roof), bands: [] }; TOWERS.push(T);
+  if (!windows) return;
+  // glass lobby at street level, with an entrance canopy on the south side
+  box(r.w + .6, 10, r.h * .9, lobbyGlass, cx, 5.5, cz, false);
+  box(r.w * .9, 10, r.h + .6, lobbyGlass, cx, 5.5, cz, false);
+  box(Math.min(40, r.w * .4), 2, 12, solid(0x2f3338), cx, 12, cz + r.h / 2 + 6);
+  // window bands
+  for (let y = 22; y < h - 8; y += 18){
+    T.bands.push(box(r.w + .8, 8, r.h * .9, glass, cx, y, cz, false), box(r.w * .9, 8, r.h + .8, glass, cx, y, cz, false));
   }
+  // vertical frames (mullions) across every face
+  const fins = [], STEP = 13;
+  for (let x = -r.w / 2 + STEP; x < r.w / 2 - 4; x += STEP) [-1, 1].forEach(s => fins.push([cx + x, cz + s * (r.h / 2 + .7), 1.6, 1.4]));
+  for (let z = -r.h / 2 + STEP; z < r.h / 2 - 4; z += STEP) [-1, 1].forEach(s => fins.push([cx + s * (r.w / 2 + .7), cz + z, 1.4, 1.6]));
+  const finMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), solid(new THREE.Color(wall).multiplyScalar(.82).getHex()), fins.length);
+  const o = new THREE.Object3D();
+  fins.forEach(([x, z, w, d], i) => { o.position.set(x, 12 + (h - 12) / 2, z); o.scale.set(w, h - 14, d); o.updateMatrix(); finMesh.setMatrixAt(i, o.matrix); });
+  scene.add(finMesh);
+  // rooftop machinery
+  box(Math.min(26, r.w * .3), 9, Math.min(22, r.h * .3), solid(0x9aa0a6), cx - r.w * .2, h + 8.5, cz - r.h * .15);
+  [[.22, .2], [.3, -.22], [-.05, .28]].forEach(([fx, fz]) => box(9, 5, 9, solid(0xc5c9cc), cx + r.w * fx, h + 6.5, cz + r.h * fz));
 }
 const TOP = {};                                          // roof height per stop (labels, lights)
 tower(LM.priceline, 230, 0xb9b2c9, 0x968daa);
@@ -173,24 +236,59 @@ tower(LM.birchwood, 70, 0xd8cdb5, 0xb8ab90); TOP.birchwood = 74;
 const lot = { x: LM.birchwood.x, y: LM.birchwood.y - 150, w: 240, h: 130 };
 {
   const { cx, cz } = centre(lot);
-  flat(lot.w, lot.h, solid(0x5d6268), cx, cz, 2.5);
-  const cc = [0xe63946, 0xf1faee, 0x1d3557, 0xffb703, 0x8ecae6, 0xadb5bd];
+  flat(lot.w, lot.h, asphalt, cx, cz, 2.5);
+  const cc = [0x9c1a24, 0xe7e5df, 0x1f3550, 0x3b3f44, 0x8ecae6, 0xadb5bd, 0x2a9d8f];
+  const kit = createCarKit(reflect), parked = [];
+  const pHead = new THREE.MeshStandardMaterial({ color: 0xf6f3e8, roughness: .1 }), pTail = new THREE.MeshStandardMaterial({ color: 0xb3161b, roughness: .2 });
   for (let row = 0; row < 2; row++) for (let k = 0; k < 7; k++) if ((k * 3 + row) % 4){
-    const x = X(lot.x + 24 + k * 32), z = Z(lot.y + 33 + row * 64);
-    box(20, 10, 36, solid(cc[(k + row) % cc.length], { roughness: .35, metalness: .2 }), x, 7, z);
-    box(17, 7, 16, solid(0x2b3740, { roughness: .2 }), x, 14, z + (row ? 2 : -2));
+    const car = kit.build(kit.TYPES[(k + row) % kit.TYPES.length], cc[(k + row) % cc.length], pHead, pTail);
+    car.position.set(X(lot.x + 24 + k * 32), 2.8, Z(lot.y + 33 + row * 64));
+    car.rotation.y = row ? -Math.PI / 2 : Math.PI / 2;     // nosed in to the parking lines
+    car.traverse(m => { if (m.isMesh){ m.castShadow = true; m.receiveShadow = true; } });
+    scene.add(car); parked.push(car);
   }
+  createWheels(scene, kit, parked);
+  // painted parking lines
+  for (let row = 0; row < 2; row++) for (let k = 0; k <= 7; k++) flat(1.2, 48, solid(0xf2f2ee), X(lot.x + 8 + k * 32), Z(lot.y + 33 + row * 64), 3);
 }
-tower(LM.education, 60, 0xc9b8a6, 0xa8957f); TOP.education = 94;
-{ const { cx, cz } = centre(LM.education); const d = new THREE.Mesh(new THREE.SphereGeometry(30, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), solid(0x6fb59a, { roughness: .4, metalness: .3 })); d.position.set(cx, 64, cz); d.castShadow = true; scene.add(d); }
+const uofm = createAdminBuilding(scene, LM.education, { X, Z, TEX, reflect }); TOP.education = uofm.top;
 tower(LM.gada, 45, 0x9aa5b8, 0x7a869a); TOP.gada = 49;
-const homeRoof = new THREE.Mesh(prism, new THREE.MeshStandardMaterial({ color: 0xe76f51, roughness: .8, flatShading: true }));
+const prism = new THREE.CylinderGeometry(1, 1, 1, 3); prism.rotateZ(Math.PI / 2);
+const homeRoofMat = texturedMaterial(TEX.shingles, { color: 0xe08a6a, roughness: .95 });
+homeRoofMat.map = homeRoofMat.map.clone(); homeRoofMat.normalMap = homeRoofMat.normalMap && homeRoofMat.normalMap.clone(); [homeRoofMat.map, homeRoofMat.normalMap].filter(Boolean).forEach(t => { t.repeat.set(1 / 30, 1 / 30); t.needsUpdate = true; });
+const homeRoof = new THREE.Mesh(gableRoof(LM.about.w, LM.about.h, LM.about.h * .45, 5), homeRoofMat);
+let homeGlass = null;
 { const r = LM.about, { cx, cz } = centre(r);
-  box(r.w, 50, r.h, solid(0xfbf3e6), cx, 25, cz);
-  homeRoof.scale.set(r.w + 10, r.h * .62, r.h * .62); homeRoof.position.set(cx, 50 + r.h * .29, cz); homeRoof.castShadow = true; scene.add(homeRoof);
+  // Home: a bigger two-storey version of the town's houses
+  const homeWall = texturedMaterial(TEX.siding, { color: 0xfbf1dc });
+  homeWall.map = homeWall.map.clone(); homeWall.normalMap = homeWall.normalMap && homeWall.normalMap.clone(); [homeWall.map, homeWall.normalMap].filter(Boolean).forEach(t => { t.repeat.set(1 / 26, 1 / 26); t.needsUpdate = true; });
+  box(r.w + 3, 3, r.h + 3, facade(0x9c988f), cx, 1.5, cz);
+  box(r.w, 50, r.h, homeWall, cx, 25, cz);
+  const trimM = solid(0xf3f1ec, { roughness: .6 }), hGlass = reflect(new THREE.MeshStandardMaterial({ color: 0x1a242c, roughness: .06, metalness: .55, emissive: 0xffcf80, emissiveIntensity: 0 }));
+  homeGlass = hGlass;
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => box(2, 50, 2, trimM, cx + sx * r.w / 2, 25, cz + sz * r.h / 2));
+  [14, 36].forEach(y => [-.36, -.12, .12, .36].forEach(f => [1, -1].forEach(side => {
+    if (y === 14 && side === 1 && Math.abs(f) < .2) return;                                   // door goes here
+    box(13, 12, 1, trimM, cx + f * r.w, y + 6, cz + side * (r.h / 2 + .3), false);
+    box(11, 10, 1.2, hGlass, cx + f * r.w, y + 6, cz + side * (r.h / 2 + .4), false);
+    box(13, 1, 2.4, trimM, cx + f * r.w, y - .3, cz + side * (r.h / 2 + 1), false);
+  })));
+  box(10, 20, 1.2, solid(0x5b2f22, { roughness: .45 }), cx, 12.5, cz + r.h / 2 + .4);   // front door
+  box(24, 1.4, 12, trimM, cx, 25, cz + r.h / 2 + 6);                                        // porch roof
+  [-10, 10].forEach(o => box(1.6, 22, 1.6, trimM, cx + o, 13, cz + r.h / 2 + 11));
+  box(26, 2.4, 13, facade(0xa9a59c), cx, 1.2, cz + r.h / 2 + 6.5);
+  // gable ends: close the wall up to the underside of the roof on both sides
+  { const rise = r.h * .45, over = 5, d = r.h, edge = -1.4 + (rise - .6) * over / (d / 2 + over) - .1;
+    const sh = new THREE.Shape(); sh.moveTo(-d / 2, -.5); sh.lineTo(-d / 2, edge); sh.lineTo(0, rise - 2.1); sh.lineTo(d / 2, edge); sh.lineTo(d / 2, -.5); sh.closePath();
+    const g = new THREE.ExtrudeGeometry(sh, { depth: r.w, bevelEnabled: false }); g.translate(0, 0, -r.w / 2); g.rotateY(Math.PI / 2);
+    worldUV(g, cx, cz);
+    const m = new THREE.Mesh(g, homeWall); m.position.set(cx, 50, cz); m.castShadow = m.receiveShadow = true; scene.add(m);
+    [1, -1].forEach(sx => { box(1.2, 12, 9, trimM, cx + sx * (r.w / 2 + .3), 50 + rise * .42, cz, false); box(1.4, 10, 7, hGlass, cx + sx * (r.w / 2 + .4), 50 + rise * .42, cz, false); });   // attic windows
+  }
+  homeRoof.position.set(cx, 50, cz); homeRoof.castShadow = homeRoof.receiveShadow = true; scene.add(homeRoof);
   box(14, 30, 14, solid(0x6b4f43), cx - 40, 85, cz - 20); TOP.about = 50 + r.h * .6; }
 { const r = LM.projects, { cx, cz } = centre(r);
-  box(r.w, 46, r.h, solid(0xf4a261), cx, 23, cz); cap(r, 46, 0xd9874a);
+  box(r.w, 46, r.h, solid(0xf4a261), cx, 23, cz); TOWERS.push({ r, h: 46, wall: 0xf4a261, windows: false, cap: cap(r, 46, 0xd9874a), bands: [] });
   for (let k = 0; k < 3; k++) box(36, 30, 2, glass, X(r.x + 44 + k * 56), 20, Z(r.y + r.h) + 1, false);
   TOP.projects = 50; }
 const tents = [];
@@ -310,17 +408,42 @@ if (FX.holiday === 'christmas'){
   const cols = [0xff4d4d, 0xffd23f, 0x3ddc84, 0x4da3ff];
   const spots = [];
   for (let k = 0; k < 40; k++){ const a = k * 2.4, y = 20 + (k * 11) % 120, r = 52 * (1 - y / 160) + 4; spots.push([cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]); }
-  Object.keys(TOP).forEach(id => { if (id === 'skills') return; const r = LM[id], y = TOP[id] - (id === 'about' ? 18 : 0) + 3;
-    const per = 2 * (r.w + r.h), n = Math.round(per / 16);
-    for (let k = 0; k < n; k++){ let d = k * per / n, px, py;
-      if (d < r.w){ px = r.x + d; py = r.y; } else if ((d -= r.w) < r.h){ px = r.x + r.w; py = r.y + d; } else if ((d -= r.h) < r.w){ px = r.x + r.w - d; py = r.y + r.h; } else { d -= r.w; px = r.x; py = r.y + r.h - d; }
-      spots.push([X(px), id === 'priceline' ? 232 : y, Z(py)]); } });
-  const geo = new THREE.SphereGeometry(2.6, 8, 6);
+  // Light strings hang from each roof's real edge, like real ones: a dark wire
+  // clipped under the roof lip that sags between clips, with small bulbs along it.
+  // Flat roofs: under the cap's 2-unit lip. Home: along both eaves, then up and
+  // over the two gable ends (ridge runs east-west).
+  const ROOFH = { priceline: 230, conquest: 110, birchwood: 70, gada: 45, projects: 46, contact: 55, hobbies: 34 };
+  const wire = [], BULB = 6.5, CLIP = 26;
+  const string = (a, b, sag) => {                 // one edge, a/b = [x, y, z] world points
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]), spans = Math.max(1, Math.round(len / CLIP));
+    const at = t => { const u = (t * spans) % 1; return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t - sag * 4 * u * (1 - u), a[2] + (b[2] - a[2]) * t]; };
+    const steps = spans * 8;
+    for (let k = 0; k < steps; k++) wire.push(...at(k / steps), ...at((k + 1) / steps));
+    const n = Math.max(1, Math.round(len / BULB));
+    for (let k = 0; k < n; k++){ const q = at((k + .5) / n); spots.push([q[0], q[1] - 1.3, q[2]]); }
+  };
+  const loop = (pts, sag) => pts.forEach((p, i) => string(p, pts[(i + 1) % pts.length], sag));
+  Object.keys(ROOFH).forEach(id => {
+    const r = LM[id], y = ROOFH[id] - .4, o = 1.6;
+    const x0 = X(r.x - o), x1 = X(r.x + r.w + o), z0 = Z(r.y - o), z1 = Z(r.y + r.h + o);
+    loop([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], 3);
+  });
+  { const r = uofm.eaveRect, y = uofm.eave - 2.8, x0 = X(r.x - .6), x1 = X(r.x + r.w + .6), z0 = Z(r.y - .6), z1 = Z(r.y + r.h + .6);   // U of M: under its stone cornice
+    loop([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], 3); }
+  { const r = LM.about, ov = 4.6, y = 48.4, rise = r.h * .45;
+    const x0 = X(r.x - ov), x1 = X(r.x + r.w + ov), z0 = Z(r.y - ov), z1 = Z(r.y + r.h + ov), zc = (z0 + z1) / 2;
+    string([x0, y, z1], [x1, y, z1], 2.5);        // front eave
+    string([x0, y, z0], [x1, y, z0], 2.5);        // back eave
+    [x0, x1].forEach(x => { string([x, y, z1], [x, y + rise, zc], 0); string([x, y + rise, zc], [x, y, z0], 0); });
+  }
+  const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wire, 3));
+  xmas.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x15301c })));
+  const geo = new THREE.SphereGeometry(1.25, 8, 6); geo.scale(1, 1.35, 1);   // small, slightly egg-shaped bulbs
   [bulbsA, bulbsB].forEach((arr, half) => {
     const pts = spots.filter((_, i) => i % 2 === half);
     const m = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }), pts.length);
     const o = new THREE.Object3D();
-    pts.forEach((p, i) => { o.position.set(...p); o.updateMatrix(); m.setMatrixAt(i, o.matrix); m.setColorAt(i, new THREE.Color(cols[(i + half) % 4])); });
+    pts.forEach((p, i) => { o.position.set(...p); o.scale.setScalar(i * 2 + half < 40 ? 1.8 : 1); o.updateMatrix(); m.setMatrixAt(i, o.matrix); m.setColorAt(i, new THREE.Color(cols[(i + half) % 4])); });
     xmas.add(m); arr.push(m);
   });
   // Santa hat on the rider
@@ -331,6 +454,72 @@ if (FX.holiday === 'christmas'){
   bike.add(hat); bike.userData.helmet.material = solid(0xd62828);
 }
 
+/* ---------------- day / night (Winnipeg's real sun, from sun.js) ---------------- */
+const daySky = new THREE.Color(0xa9d4f0), dayHemi = new THREE.Color(0xdff2ff), dayHemiGround = new THREE.Color(0x6f8f4f);
+const NIGHT_SKY = new THREE.Color(0x0b1426), DUSK = new THREE.Color(0xf0926a), MOON = new THREE.Color(0x9db4ff), SUNC = new THREE.Color(0xfff1dc);
+scene.background = new THREE.Color(); 
+let lastDay = -1;
+// Second-pass detail (detail3d.js, loaded after the town is on screen) plugs in here.
+const HOOKS = { night: [], snow: [], update: [], render: null };
+// street lamps on every corner of every intersection
+const LAMP_SPOTS = [];
+XS.forEach(x => YS.forEach(y => [[-1, -1], [1, 1]].forEach(([sx, sy]) => LAMP_SPOTS.push([X(x + sx * 38), Z(y + sy * 38)]))));
+const lampPoles = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1.3, 30, 6), solid(0x3a3f45), LAMP_SPOTS.length);
+const lampHeads = new THREE.InstancedMesh(new THREE.SphereGeometry(3.4, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffe6a8 }), LAMP_SPOTS.length);
+{ const o = new THREE.Object3D();
+  LAMP_SPOTS.forEach(([x, z], i) => { o.position.set(x, 15, z); o.updateMatrix(); lampPoles.setMatrixAt(i, o.matrix); o.position.set(x, 31, z); o.updateMatrix(); lampHeads.setMatrixAt(i, o.matrix); });
+  scene.add(lampPoles, lampHeads); }
+// soft pools of light under each lamp (additive), only visible at night
+function glowTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(255,220,150,1)'); r.addColorStop(.4, 'rgba(255,200,120,.45)'); r.addColorStop(1, 'rgba(255,190,110,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const GLOW = glowTexture();
+const poolMat = new THREE.MeshBasicMaterial({ map: GLOW, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+const pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(90, 90), poolMat, LAMP_SPOTS.length);
+{ const o = new THREE.Object3D(); o.rotation.x = -Math.PI / 2;
+  LAMP_SPOTS.forEach(([x, z], i) => { o.position.set(x, 4.5, z); o.updateMatrix(); pools.setMatrixAt(i, o.matrix); }); pools.renderOrder = 2; scene.add(pools); }
+const haloMat = new THREE.SpriteMaterial({ map: GLOW, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+const halos = LAMP_SPOTS.map(([x, z]) => { const s = new THREE.Sprite(haloMat); s.position.set(x, 31, z); s.scale.set(26, 26, 1); scene.add(s); return s; });
+// (house windows are built with the houses; applyDaylight makes them glow at night)
+// stars
+const starGeo = new THREE.BufferGeometry(), sp = [];
+for (let i = 0; i < 700; i++){ const a = Math.random() * Math.PI * 2, e = .08 + Math.random() * 1.2, r = 4200; sp.push(Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r); }
+starGeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false });
+const stars = new THREE.Points(starGeo, starMat); scene.add(stars);
+
+// Day and night values are tuned for this exposure range; everything in between is a blend.
+const FOG_DAY = new THREE.Color(0xa9c3d8);
+function applyDaylight(day){
+  if (Math.abs(day - lastDay) < .004) return;
+  lastDay = day;
+  const night = 1 - day, dusk = 4 * day * (1 - day), mix = (a, b) => a + (b - a) * day;
+  skySun(day * 38 - 7);                                      // the sky itself goes to twilight and night
+  sky.visible = day > .02;
+  scene.background.copy(NIGHT_SKY);
+  if (scene.fog) scene.fog.color.copy(NIGHT_SKY).lerp(FOG_DAY.clone().lerp(daySky, .5), day).lerp(DUSK, dusk * .3);
+  renderer.toneMappingExposure = mix(.5, .5);
+  sun.intensity = mix(1.1, 5);                               // moonlight at night
+  sun.color.copy(MOON).lerp(SUNC, day).lerp(DUSK, dusk * .4);
+  hemi.intensity = mix(.9, 1.25);                           // sky fill light (replaces sky reflections on plain surfaces)
+  hemi.color.copy(new THREE.Color(0x4a5a8a)).lerp(dayHemi, day);
+  hemi.groundColor.copy(new THREE.Color(0x1c2233)).lerp(dayHemiGround, day);
+  envNow = mix(.08, .9); shiny.forEach(m => { m.envMapIntensity = envNow; });
+  const lit = Math.max(0, Math.min(1, (night - .25) / .5));   // lights switch on around dusk
+  glass.emissiveIntensity = .85 * lit;
+  houses.setNight(lit); uofm.setNight(lit);
+  if (homeGlass) homeGlass.emissiveIntensity = 1.1 * lit;
+  poolMat.opacity = .55 * lit; haloMat.opacity = .9 * lit; pools.visible = lit > .01; halos.forEach(h => { h.visible = lit > .01; });
+  lampHeads.material.color.setHex(lit > .01 ? 0xffe6a8 : 0xd9dde2);
+  starMat.opacity = Math.max(0, night - .35) / .65;
+  if (traffic) traffic.setNight(lit);
+  airport.setNight(lit);
+  HOOKS.night.forEach(f => f(lit, day));
+  dirty = true;
+}
+
 /* ---------------- palette switching (snow) ---------------- */
 let snowy = null;
 function applyPalette(){
@@ -339,15 +528,17 @@ function applyPalette(){
   snowy = s;
   const P = s ? PAL.snowy : PAL.summer;
   ['ground', 'block', 'park', 'side', 'bank', 'water'].forEach(k => mats[k] && mats[k].color.setHex(P[k]));
-  scene.background = new THREE.Color(P.sky);
-  scene.fog = new THREE.Fog(P.sky, 1600, 4200);
-  hemi.color.setHex(P.hemiSky); hemi.groundColor.setHex(P.hemiGround);
-  trees.forEach((t, i) => { const c = GREENS[i % GREENS.length].clone(); if (s) c.lerp(SNOW, .55); leaves.setColorAt(i, c); });
-  M.houses.forEach((h, i) => { const c = ROOFS[i % ROOFS.length].clone(); if (s) c.lerp(SNOW, .8); roofs.setColorAt(i, c); });
-  leaves.instanceColor.needsUpdate = roofs.instanceColor.needsUpdate = true;
+  ['ground', 'block', 'park'].forEach(k => { mats[k].map = (s ? TEX.snow : TEX.grass).map; mats[k].normalMap = (s ? TEX.snow : TEX.grass).normalMap; mats[k].needsUpdate = true; });
+  daySky.setHex(P.sky); dayHemi.setHex(P.hemiSky); dayHemiGround.setHex(P.hemiGround);
+  scene.fog = new THREE.Fog(P.sky, 1500, 4200);
+  lastDay = -1;                          // re-apply lighting with the new palette
+  for (let i = 0; i < leafBase.length; i++){ const c = leafBase[i].clone(); if (s) c.lerp(SNOW, .5); leaves.setColorAt(i, c); }
+  leaves.instanceColor.needsUpdate = true;
+  houses.setSnow(s); uofm.setSnow(s);
   roofCaps.forEach(m => m.material.color.set(s ? new THREE.Color(m.userData.base).lerp(SNOW, .85) : m.userData.base));
   tents.forEach(t => t.material.color.set(s ? new THREE.Color(t.userData.base).lerp(SNOW, .45) : t.userData.base));
-  homeRoof.material.color.set(s ? new THREE.Color(0xe76f51).lerp(SNOW, .85) : 0xe76f51);
+  homeRoof.material.color.set(s ? new THREE.Color(0xf4f7fa) : 0xe08a6a);
+  HOOKS.snow.forEach(f => f(s));
   renderer.shadowMap.needsUpdate = true; dirty = true;
 }
 applyPalette();
@@ -427,13 +618,19 @@ renderer.domElement.addEventListener('pointerup', e => {
 /* ---------------- per-frame sync ---------------- */
 const tmp = new THREE.Vector3();
 let lastRide = '', lastTwinkle = 0, lastPose = '', weave = 0, lean = 0;
-const traffic = M.reduceMotion ? null : createTraffic(scene, M, { X, Z, mobile });
+const traffic = M.reduceMotion ? null : createTraffic(scene, M, { X, Z, mobile, reflect });
+const airport = createAirport(scene, { X, Z, mat, solid, moving: !M.reduceMotion, worldUV });
 // first-visit parachute intro; when it ends the camera pulls back to the overview
 const intro = createIntro({ THREE, scene, camera, controls, rig, M, X, Z, mobile, holiday: FX.holiday, enabled: mode === '3d',
   onEnd(){ if (!M.rider().riding){ follow = false; flyTo(OVERVIEW.target, OVERVIEW.offset, 1500); } } });
+let dayCheck = 0;
+// Shader programs are compiled in the background (parallel where the browser supports it)
+// before the first 3D frame, so the page keeps responding and the 2D map stays up meanwhile.
+let shadersReady = false;
 function frame(dt, now){
-  if (mode !== '3d') return;
+  if (mode !== '3d' || !shadersReady) return;
   applyPalette();
+  if (now - dayCheck > 1000 || lastDay < 0){ dayCheck = now; applyDaylight(window.PortfolioSun ? PortfolioSun.daylight() : 1); }
   const r = M.rider();
   // rider pose
   // swerve left around cars ahead, then tuck back into the lane
@@ -457,7 +654,17 @@ function frame(dt, now){
   // a new ride, or arriving somewhere, puts the camera back in follow mode
   const key = r.rideId + '|' + r.stop;
   if (key !== lastRide && (r.riding || r.stop)){ if (lastRide !== '') follow = true; lastRide = key; }
-  if (intro.active){
+  if (reveal){
+    // tilt from the 2D-matching top-down view into the 3D overview
+    const k = Math.min(1, (now - reveal.t0) / reveal.ms), e = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    if (now >= reveal.t0){
+      controls.target.lerpVectors(reveal.fromT, reveal.toT, e);
+      camera.position.lerpVectors(reveal.fromP, reveal.toP, e);
+    }
+    camera.lookAt(controls.target);
+    if (k >= 1){ reveal = null; controls.update(); }
+    dirty = true;
+  } else if (intro.active){
     intro.update(dt, now);                 // the intro drives the camera until it ends
     dirty = true;
   } else if (tween){
@@ -474,22 +681,83 @@ function frame(dt, now){
     camera.position.lerp(p.pos, kp);
     if (before.distanceToSquared(camera.position) > 1e-4) dirty = true;
   }
-  if (!intro.active) controls.update();
+  if (!intro.active && !reveal) controls.update();
   updateViewOffset();
   // Christmas bulbs blink in two groups, ~8 times a second at most
   if (bulbsA.length && now - lastTwinkle > 120){
     lastTwinkle = now; const s = .5 + .5 * Math.sin(now / 450);
     bulbsA[0].material.opacity = .35 + .65 * s; bulbsB[0].material.opacity = .35 + .65 * (1 - s); dirty = true;
   }
-  if (traffic){ traffic.update(dt, r.riding ? r : { x: r.x, y: r.y }); dirty = true; }   // the town is always moving now
-  if (dirty){ dirty = false; renderer.render(scene, camera); }
+  if (traffic){ traffic.update(dt, r.riding ? r : { x: r.x, y: r.y }); dirty = true; }
+  airport.update(dt);   // the town is always moving now
+  for (const f of HOOKS.update) f(dt, now);
+  if (booting) startReveal(now);
+  if (dirty){ dirty = false; if (HOOKS.render) HOOKS.render(dt); else renderer.render(scene, camera); if (shownAt === Infinity) shownAt = performance.now(); if (booting){ booting = false; fadeIn(); } else if (!detailAsked && !reveal && !intro.active && !tween && now - shownAt > 900) loadDetail(); }
+}
+let booting = document.documentElement.classList.contains('boot-3d');
+
+/* ---------------- second pass: extra realism, after the town is up ----------------
+   The town above is the quick version. Once it's on screen and the opening camera
+   move is over, detail3d.js is fetched and adds the rest a piece at a time
+   (window grids, street markings, yards, water, clouds, night glow...).
+   ?detail=0 turns it off; ?detail=max forces every effect on. */
+const DETAIL = params.get('detail');
+let detailAsked = DETAIL === '0', shownAt = Infinity;
+function loadDetail(){
+  detailAsked = true;
+  import('./detail3d.js').then(m => m.enhance({
+    THREE, scene, camera, renderer, M, X, Z, mobile, TEX, LM, TOWERS, HOOKS, trees, trunks, BLOBS, SITE, lampPoles, LAMP_SPOTS, asphalt, uofm, ENV, mats, solid, reflect, glass, houses, leaves, leafBase, SNOW,
+    force: DETAIL === 'max', holiday: FX.holiday, centre, xmasBulbs: [...bulbsA, ...bulbsB], lampHeads, CURB, ROAD, XS, YS, sun,
+    isSnowy: () => !!snowy, lit: () => Math.max(0, Math.min(1, ((1 - lastDay) - .25) / .5)), day: () => lastDay,
+    touch(shadows){ dirty = true; if (shadows) renderer.shadowMap.needsUpdate = true; },
+  })).then(() => { document.documentElement.dataset.detail = 'done'; }).catch(e => console.warn('detail pass skipped', e));
+}
+
+/* ---------------- 2D -> 3D hand-off ----------------
+   The 2D map is on screen while this module loads. For the first 3D frame,
+   put the camera straight above the same spot at the height that shows the
+   same area, so the 3D town lines up with the 2D map. Fade it in over the
+   2D map, then tilt down into the usual 3D overview. */
+let reveal = null;
+function startReveal(now){
+  if (intro.active) return;                                  // the intro has its own opening shot
+  const r = M.rider(), panelOpen = document.getElementById('panel').classList.contains('open');
+  if (r.riding || panelOpen) return;                         // they've already started: just follow
+  // match the 3D picture offset to the side panel / route bar right away
+  const ins = M.panelInset(), navLeft = !mobile ? 125 : 0;
+  viewOff = { x: ins.r / 2 - navLeft, y: ins.b / 2 };
+  camera.setViewOffset(innerWidth, innerHeight, viewOff.x, viewOff.y, innerWidth, innerHeight);
+  // what the 2D map shows: its viewBox is in the same map units
+  const vb = (svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);
+  if (vb.length !== 4 || !vb[2]) return;
+  const [vx, vy, vw, vh] = vb;
+  const px = innerWidth / 2 - viewOff.x, py = innerHeight / 2 - viewOff.y;   // screen point on the 3D camera's axis
+  const P = new THREE.Vector3(X(vx + px * vw / innerWidth), 0, Z(vy + py * vh / innerHeight));
+  const h = (vh / 2) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  camera.position.set(P.x, h, P.z + .01);                    // north up, like the 2D map
+  controls.target.copy(P);
+  camera.lookAt(P);
+  reveal = { t0: now + 650, ms: 1700, fromT: P.clone(), fromP: camera.position.clone(),
+             toT: OVERVIEW.target.clone(), toP: OVERVIEW.target.clone().add(OVERVIEW.offset) };
+}
+function fadeIn(){
+  const html = document.documentElement;
+  html.classList.remove('boot-3d');                          // canvas fades to full opacity (CSS transition)
+  html.classList.add('fading-3d');
+  setTimeout(() => html.classList.remove('fading-3d'), 600); // 2D map hides once 3D fully covers it
 }
 M.onFrame(frame);
+{
+  applyPalette(); applyDaylight(window.PortfolioSun ? PortfolioSun.daylight() : 1);   // compile with the materials as they'll first be drawn
+  const done = () => { shadersReady = true; dirty = true; };
+  (renderer.compileAsync ? renderer.compileAsync(scene, camera) : Promise.resolve(renderer.compile(scene, camera))).then(done, done);
+  setTimeout(done, 15000);                                   // never wait forever
+}
 renderer.shadowMap.needsUpdate = true;
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.fov = fovFor(); camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight); sizeLabels(); dirty = true;
+  renderer.setSize(innerWidth, innerHeight); if (HOOKS.resize) HOOKS.resize(); sizeLabels(); dirty = true;
 });
 
 /* ---------------- switching views ---------------- */
@@ -501,7 +769,8 @@ function setMode(m){
   viewBtn.setAttribute('aria-label', m === '3d' ? 'Switch to the 2D map' : 'Switch to the 3D view');
   try { localStorage.setItem('portfolio-view', m); } catch (e) {}
   dirty = true;
+  if (m === '2d') document.documentElement.classList.remove('boot-3d');
 }
 viewBtn.addEventListener('click', () => { if (intro.active) intro.skip(); setMode(mode === '3d' ? '2d' : '3d'); });
 setMode(mode);
-window.Portfolio3D = { renderer, scene, camera, controls, setMode, traffic, get mode(){ return mode; }, get weave(){ return weave; } };
+window.Portfolio3D = { renderer, scene, camera, controls, setMode, traffic, airport, get mode(){ return mode; }, get weave(){ return weave; } };

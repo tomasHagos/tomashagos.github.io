@@ -179,3 +179,8 @@ body.view-3d #map{visibility:hidden}
   #tourBtn{position:fixed;right:10px;bottom:calc(64px + env(safe-area-inset-bottom));box-shadow:3px 3px 0 var(--ink);padding:9px 16px;font-size:14px;max-width:calc(100vw - 20px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   body:has(.intro:not(.hide)) #tourBtn, body:has(.intro-skip) #tourBtn{display:none}
 }
+
+/* ---------- boot: show the 2D map while 3D loads, then fade 3D in over it (sun.js adds html.boot-3d) ---------- */
+html.boot-3d body.view-3d #map, html.fading-3d body.view-3d #map{visibility:visible}
+html.boot-3d #scene3d{opacity:0}
+#scene3d{transition:opacity .55s ease}

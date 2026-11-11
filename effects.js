@@ -85,9 +85,12 @@ pill.className = 'wx-pill';
 pill.setAttribute('role', 'status');
 const controls = document.querySelector('.controls');
 if (controls) controls.insertBefore(pill, controls.firstChild);
+let lastPill = null;
 function renderPill(kind, live){
   const k = KINDS[kind];
-  const icon = kind === 'clear' && live && live.night ? '🌙' : k.icon;
+  const night = window.PortfolioSun ? PortfolioSun.daylight() < .5 : live && live.night;
+  const icon = kind === 'clear' && night ? '🌙' : kind === 'cloudy' && night ? '☁️' : k.icon;
+  lastPill = [kind, live];
   const city = CFG.weather && CFG.weather.city;
   const wx = live ? `${icon} ${k.label}, ${live.temp}°C in ${city}` : `${icon} ${k.label} today`;
   pill.innerHTML = `${holidayHTML()}<span>${wx}</span>`;
@@ -155,6 +158,12 @@ function draw(dt){
   t += dt;
   ctx.clearRect(0, 0, cw, ch);
   if (TINT[kind]){ ctx.fillStyle = TINT[kind]; ctx.fillRect(0, 0, cw, ch); }
+  // Night over the 2D map (the 3D view lights its own scene, so it skips this).
+  const day = window.PortfolioSun ? PortfolioSun.daylight() : 1;
+  if (day < 1 && (!document.body.classList.contains('view-3d') || document.documentElement.classList.contains('boot-3d'))){
+    ctx.fillStyle = `rgba(8,16,42,${(.64 * (1 - day)).toFixed(3)})`; ctx.fillRect(0, 0, cw, ch);
+    if (day < .95 && day > .05){ ctx.fillStyle = `rgba(255,140,80,${(.18 * 4 * day * (1 - day)).toFixed(3)})`; ctx.fillRect(0, 0, cw, ch); }
+  }
   // cloud shadows on the ground (drawn under the rain)
   if (skyClouds.length){
     for (const c of skyClouds){
@@ -211,7 +220,9 @@ function draw(dt){
   }
   // the clouds themselves, highest of all
   if (skyClouds.length){
+    ctx.globalAlpha = .3 + .7 * day;          // clouds aren't lit at night
     for (const c of skyClouds) blit(c.body, c.x, c.y);
+    ctx.globalAlpha = 1;
   }
 }
 M.onFrame(draw);
@@ -380,6 +391,12 @@ const DECORATE = {
 if (holiday && DECORATE[holiday.id]) DECORATE[holiday.id]();
 // read by the 3D view
 window.PortfolioEffects = { holiday: holiday ? holiday.id : null, get weather(){ return kind; } };
+// re-check day/night every minute (pill icon)
+let lastNight = null;
+setInterval(() => {
+  const n = window.PortfolioSun && PortfolioSun.daylight() < .5;
+  if (n !== lastNight && lastPill){ lastNight = n; renderPill(lastPill[0], lastPill[1]); }
+}, 60000);
 
 /* ---------------- go ---------------- */
 const forced = params.get('weather');

@@ -11,8 +11,9 @@
  * convert to 3D world coordinates.
  */
 import * as THREE from 'three';
+import { createCarKit, createWheels } from './cars3d.js';
 
-export function createTraffic(scene, M, { X, Z, mobile }){
+export function createTraffic(scene, M, { X, Z, mobile, reflect }){
   const { XS, YS } = M;
   const LANE = 14;          // lane centre, right of the road's centre line
   const WALK = 34;          // sidewalk centre, from the road's centre line
@@ -32,12 +33,16 @@ export function createTraffic(scene, M, { X, Z, mobile }){
 
   /* ---------- cars ---------- */
   const CAR_COLOURS = [0xe63946, 0xf1faee, 0x1d3557, 0xffb703, 0x8ecae6, 0x2a9d8f, 0x6c757d, 0xf4a261, 0x3a86ff, 0x8338ec];
-  const bodyGeo = new THREE.BoxGeometry(26, 8, 13);
-  const cabinGeo = new THREE.BoxGeometry(13, 7, 11);
-  const glass = new THREE.MeshStandardMaterial({ color: 0x26333b, roughness: .2, metalness: .3 });
-  const lightGeo = new THREE.BoxGeometry(1, 2.4, 3);
+  const kit = createCarKit(reflect);
   const headMat = new THREE.MeshBasicMaterial({ color: 0xfff6d5 }), tailMat = new THREE.MeshBasicMaterial({ color: 0xd62828 });
-  const blobGeo = new THREE.PlaneGeometry(30, 17), blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .22, depthWrite: false });
+  const blobTex = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 32; const g = c.getContext('2d');
+    g.filter = 'blur(4px)'; g.fillStyle = '#000'; g.beginPath(); g.roundRect(8, 7, 48, 18, 8); g.fill(); return new THREE.CanvasTexture(c); })();
+  const blobGeo = new THREE.PlaneGeometry(34, 19), blobMat = new THREE.MeshBasicMaterial({ map: blobTex, color: 0x000000, transparent: true, opacity: .45, depthWrite: false });
+  const beamTex = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 64; const g = c.getContext('2d');
+    const r = g.createRadialGradient(8, 32, 0, 8, 32, 60); r.addColorStop(0, 'rgba(255,245,210,.95)'); r.addColorStop(1, 'rgba(255,240,200,0)');
+    g.fillStyle = r; g.beginPath(); g.moveTo(0, 26); g.lineTo(64, 4); g.lineTo(64, 60); g.lineTo(0, 38); g.fill(); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const beamMat = new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+  const beamGeo = new THREE.PlaneGeometry(56, 34); beamGeo.rotateX(-Math.PI / 2); beamGeo.translate(13 + 28, .9, 0);
   const cars = [];
   const N_CARS = mobile ? 10 : 16;
   const used = new Set();
@@ -46,14 +51,11 @@ export function createTraffic(scene, M, { X, Z, mobile }){
     do { e = pick(edges); tries++; } while (used.has(e) && tries < 50);
     used.add(e);
     const g = new THREE.Group();
-    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: CAR_COLOURS[k % CAR_COLOURS.length], roughness: .35, metalness: .25 }));
-    body.position.y = 4.6; g.add(body);
-    const cabin = new THREE.Mesh(cabinGeo, glass); cabin.position.set(-1, 11.8, 0); g.add(cabin);
-    [-4, 4].forEach(z => {
-      const h = new THREE.Mesh(lightGeo, headMat); h.position.set(13.2, 4.6, z); g.add(h);
-      const t = new THREE.Mesh(lightGeo, tailMat); t.position.set(-13.2, 4.6, z); g.add(t);
-    });
+    const model = kit.build(kit.TYPES[k % kit.TYPES.length], CAR_COLOURS[k % CAR_COLOURS.length], headMat, tailMat);
+    model.position.y = -3.2;                 // the group sits on the road surface (y 3.2); the model's wheels touch y 0
+    g.add(model);
     // Shadows are rendered once for the static town, so moving things carry a soft blob instead.
+    const beam = new THREE.Mesh(beamGeo, beamMat); beam.visible = false; g.add(beam); g.userData.beam = beam;
     const blob = new THREE.Mesh(blobGeo, blobMat); blob.rotation.x = -Math.PI / 2; blob.position.set(2, .5, 2); g.add(blob);
     scene.add(g);
     const [a, b] = e;
@@ -61,6 +63,10 @@ export function createTraffic(scene, M, { X, Z, mobile }){
     place(car); car.g.position.set(X(car.x), 3.2, Z(car.y));
     cars.push(car);
   }
+  // tyres + rims for every car, in two instanced meshes (the wheel matrices include the -3.2 drop)
+  kit.wheelMatrices.forEach(m => m.premultiply(new THREE.Matrix4().makeTranslation(0, -3.2, 0)));
+  const wheelSet = createWheels(scene, kit, cars.map(c => c.g));
+  const syncWheels = wheelSet.sync;
   function place(c){
     c.dx = (c.to.x - c.from.x) / c.len; c.dy = (c.to.y - c.from.y) / c.len;
     // right of travel on screen (y points down): (-dy, dx)
@@ -170,7 +176,8 @@ export function createTraffic(scene, M, { X, Z, mobile }){
   }
 
   return {
-    update(dt, rider){ if (!dt) return; updateCars(Math.min(dt, .05), rider); updatePeople(Math.min(dt, .05)); },
+    setNight(lit){ beamMat.opacity = .7 * lit; cars.forEach(c => { c.g.userData.beam.visible = lit > .01; }); },
+    update(dt, rider){ if (!dt) return; updateCars(Math.min(dt, .05), rider); syncWheels(); updatePeople(Math.min(dt, .05)); },
     weaveFor,
     cars, people,
   };

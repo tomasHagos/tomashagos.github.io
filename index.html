@@ -8,7 +8,23 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="sun.js"></script>
 <link rel="stylesheet" href="style.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three/three.min.js", "three/addons/": "./vendor/three/addons/" } }</script>
+<!-- start fetching the 3D code right away, in parallel with the rest of the page -->
+<link rel="modulepreload" href="vendor/three/three.min.js">
+<link rel="modulepreload" href="vendor/three/addons/controls/OrbitControls.min.js">
+<link rel="modulepreload" href="vendor/three/addons/controls/MapControls.min.js">
+<link rel="modulepreload" href="three3d.js">
+<link rel="modulepreload" href="traffic3d.js">
+<link rel="modulepreload" href="intro3d.js">
+<link rel="modulepreload" href="airport3d.js">
+<link rel="modulepreload" href="textures3d.js">
+<link rel="modulepreload" href="houses3d.js">
+<link rel="modulepreload" href="cars3d.js">
+<link rel="modulepreload" href="uofm3d.js">
+<link rel="modulepreload" href="vendor/three/addons/objects/Sky.min.js">
+<link rel="modulepreload" href="vendor/three/addons/utils/BufferGeometryUtils.min.js">
 </head>
 <body>
 
@@ -65,7 +81,6 @@
   </div>
 </aside>
 
-<script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }</script>
 <script src="data.js"></script>
 <script src="app.js"></script>
 <script src="effects.js"></script>
